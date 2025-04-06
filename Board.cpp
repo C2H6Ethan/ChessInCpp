@@ -12,6 +12,10 @@ void Board::empty_board() {
         occ = 0ULL;
     }
 
+    for (auto & i : mailbox) {
+        i = {NO_PIECE_TYPE, WHITE};
+    }
+
     player_to_move = WHITE;
 }
 
@@ -29,17 +33,53 @@ void Board::setup() {
     bitboards[BLACK][QUEEN] = BitboardUtil::square_to_bitboard(d8);
     bitboards[BLACK][KING] = BitboardUtil::square_to_bitboard(e8);
 
-    for (int color = 0; color < BOTH_COLORS; color++) {
-        for (int pt = 0; pt < PIECE_TYPE_COUNT; pt++) {
+    for (int color = WHITE; color <= BLACK; color++) {
+        for (int pt = PAWN; pt <= KING; pt++) {
             occupancy[color] |= bitboards[color][pt];
-            occupancy[BOTH_COLORS] |= bitboards[color][pt];
+            occupancy[2] |= bitboards[color][pt];
         }
     }
+
+    mailbox[0] = {ROOK, WHITE};
+    mailbox[1] = {KNIGHT, WHITE};
+    mailbox[2] = {BISHOP, WHITE};
+    mailbox[3] = {QUEEN, WHITE};
+    mailbox[4] = {KING, WHITE};
+    mailbox[5] = {BISHOP, WHITE};
+    mailbox[6] = {KNIGHT, WHITE};
+    mailbox[7] = {ROOK, WHITE};
+    mailbox[8] = {PAWN, WHITE};
+    mailbox[9] = {PAWN, WHITE};
+    mailbox[10] = {PAWN, WHITE};
+    mailbox[11] = {PAWN, WHITE};
+    mailbox[12] = {PAWN, WHITE};
+    mailbox[13] = {PAWN, WHITE};
+    mailbox[14] = {PAWN, WHITE};
+    mailbox[15] = {PAWN, WHITE};
+
+
+    mailbox[48] = {PAWN, WHITE};
+    mailbox[49] = {PAWN, WHITE};
+    mailbox[50] = {PAWN, WHITE};
+    mailbox[51] = {PAWN, WHITE};
+    mailbox[52] = {PAWN, WHITE};
+    mailbox[53] = {PAWN, WHITE};
+    mailbox[54] = {PAWN, WHITE};
+    mailbox[55] = {PAWN, WHITE};
+    mailbox[56] = {ROOK, BLACK};
+    mailbox[57] = {KNIGHT, BLACK};
+    mailbox[58] = {BISHOP, BLACK};
+    mailbox[59] = {QUEEN, BLACK};
+    mailbox[60] = {KING, BLACK};
+    mailbox[61] = {BISHOP, BLACK};
+    mailbox[62] = {KNIGHT, BLACK};
+    mailbox[63] = {ROOK, BLACK};
+
 }
 
 void Board::make_move(Square from, Square to) {
-    PieceType pieceType = get_piece_type_on_square(from, player_to_move);
-    if (pieceType == PIECE_TYPE_COUNT) {
+    PieceType pieceType = get_piece_type_on_square(from);
+    if (pieceType == NO_PIECE_TYPE) {
         std::cout << "no piece at square";
         return;
     }
@@ -50,14 +90,18 @@ void Board::make_move(Square from, Square to) {
     // remove from source square
     bitboards[player_to_move][pieceType] ^= from_bb;
     occupancy[player_to_move] ^= from_bb;
-    occupancy[BOTH_COLORS] ^= from_bb;
+    occupancy[2] ^= from_bb;
 
     // handle capture
 
     // add to destination square
     bitboards[player_to_move][pieceType] ^= to_bb;
     occupancy[player_to_move] ^= to_bb;
-    occupancy[BOTH_COLORS] ^= to_bb;
+    occupancy[2] ^= to_bb;
+
+    // update mailbox
+    mailbox[to] = mailbox[from];
+    mailbox[from] = {NO_PIECE_TYPE, WHITE};
 }
 
 void Board::print() {
@@ -68,11 +112,11 @@ void Board::print() {
         std::cout << rank + 1 << " ";
         for (int file = 0; file < 8; file++) {
             Square s =  static_cast<Square>(rank * 8 + file);
-            Color piece_color = get_piece_color_on_square(s);
-            if (piece_color == NONE_COLOR) {
+            PieceType piece_type = get_piece_type_on_square(s);
+            if (piece_type == NO_PIECE_TYPE) {
                 std::cout << "." << " ";
             } else {
-                PieceType piece_type = get_piece_type_on_square(s, piece_color);
+                Color piece_color = get_piece_color_on_square(s);
                 if (piece_color == WHITE) {
                     std::cout << whitePieceChars[piece_type] << " ";
                 } else {
@@ -88,24 +132,12 @@ void Board::print() {
 
 // helper methods
 Color Board::get_piece_color_on_square(Square s) {
-    for (int c = 0; c < BOTH_COLORS; c++) {
-        if (occupancy[c] & (1ULL << s)) {
-            return static_cast<Color>(c);
-        }
-    }
-
-    return NONE_COLOR; // no piece at square
+    return mailbox[s].color;
 }
 
 
-PieceType Board::get_piece_type_on_square(Square s, Color piece_color) {
-    for (int pt = 0; pt < PIECE_TYPE_COUNT; pt++) {
-        if (bitboards[piece_color][pt] & (1ULL << s)) {
-            return static_cast<PieceType>(pt);
-        }
-    }
-
-    return NONE_TYPE; // no piece at square
+PieceType Board::get_piece_type_on_square(Square s) {
+    return mailbox[s].type;
 }
 
 
