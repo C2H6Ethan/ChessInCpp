@@ -1,4 +1,7 @@
 #include "Board.h"
+
+#include <sstream>
+
 #include "BitboardUtils.h"
 
 void Board::empty_board() {
@@ -17,64 +20,112 @@ void Board::empty_board() {
     }
 
     player_to_move = WHITE;
+    castling_rights = {true, true, true, true};
+    half_move_clock = 0;
+    full_move_counter = 1;
+    en_passant_target_square = NO_SQUARE;
 }
 
 void Board::setup() {
-    bitboards[WHITE][PAWN] = 0xFF00ULL;
-    bitboards[WHITE][KNIGHT] = BitboardUtil::square_to_bitboard(b1) | BitboardUtil::square_to_bitboard(g1);
-    bitboards[WHITE][ROOK] = BitboardUtil::square_to_bitboard(a1) | BitboardUtil::square_to_bitboard(h1);
-    bitboards[WHITE][BISHOP] = BitboardUtil::square_to_bitboard(c1) | BitboardUtil::square_to_bitboard(f1);
-    bitboards[WHITE][QUEEN] = BitboardUtil::square_to_bitboard(d1);
-    bitboards[WHITE][KING] = BitboardUtil::square_to_bitboard(e1);
-    bitboards[BLACK][PAWN] = 0x00FF000000000000ULL;
-    bitboards[BLACK][KNIGHT] = BitboardUtil::square_to_bitboard(b8) | BitboardUtil::square_to_bitboard(g8);
-    bitboards[BLACK][BISHOP] = BitboardUtil::square_to_bitboard(c8) | BitboardUtil::square_to_bitboard(f8);
-    bitboards[BLACK][ROOK] = BitboardUtil::square_to_bitboard(a8) | BitboardUtil::square_to_bitboard(h8);
-    bitboards[BLACK][QUEEN] = BitboardUtil::square_to_bitboard(d8);
-    bitboards[BLACK][KING] = BitboardUtil::square_to_bitboard(e8);
+    setup_with_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+}
 
-    for (int color = WHITE; color <= BLACK; color++) {
-        for (int pt = PAWN; pt <= KING; pt++) {
-            occupancy[color] |= bitboards[color][pt];
-            occupancy[2] |= bitboards[color][pt];
+void Board::setup_with_fen(std::string fen) {
+    std::istringstream fen_stream(fen);
+    std::vector<std::string> tokens;
+    std::string token;
+
+    while (std::getline(fen_stream, token, ' ')) {  // Extracts words separated by whitespace
+        tokens.push_back(token);
+    }
+
+    std::string pieces_string = tokens[0];
+    std::string player_to_move_string = tokens[1];
+    std::string castling_rights_string = tokens[2];
+    std::string en_passant_target_square_string = tokens[3];
+    std::string half_move_clock_string = tokens[4];
+    std::string full_move_counter_string = tokens[5];
+
+
+    // pieces
+    std::istringstream pieces_stream(pieces_string);
+    std::vector<std::string> ranks;
+
+    while (std::getline(pieces_stream, token, '/')) {
+        ranks.insert(ranks.begin(), token);
+    }
+
+    std::string whitePieces = "PNBRQK";
+    std::string blackPieces = "pnbrqk";
+    int square_counter = 0;
+    for (std::string rank : ranks) {
+        for (char c : rank) {
+            if (whitePieces.contains(c)) {
+                size_t piece_type_index = whitePieces.find(c);
+                PieceType type = PieceType(piece_type_index);
+                Bitboard piece_bb = BitboardUtil::square_to_bitboard(static_cast<Square>(square_counter));
+                bitboards[WHITE][type] |= piece_bb;
+                occupancy[WHITE] |= piece_bb;
+                occupancy[2] |= piece_bb; // both
+                mailbox[square_counter] = {type, WHITE};
+                square_counter++;
+            } else if (blackPieces.contains(c)) {
+                size_t piece_type_index = blackPieces.find(c);
+                PieceType type = PieceType(piece_type_index);
+                Bitboard piece_bb = BitboardUtil::square_to_bitboard(static_cast<Square>(square_counter));
+                bitboards[BLACK][type] |= piece_bb;
+                occupancy[BLACK] |= piece_bb;
+                occupancy[2] |= piece_bb; // both
+                mailbox[square_counter] = {type, BLACK};
+                square_counter++;
+            } else {
+                int amount_of_empty_squares = c - '0';
+                for (int i = 0; i < amount_of_empty_squares; i++) {
+                    mailbox[square_counter] = {NO_PIECE_TYPE, WHITE};
+                    square_counter++;
+                }
+            }
         }
     }
 
-    mailbox[0] = {ROOK, WHITE};
-    mailbox[1] = {KNIGHT, WHITE};
-    mailbox[2] = {BISHOP, WHITE};
-    mailbox[3] = {QUEEN, WHITE};
-    mailbox[4] = {KING, WHITE};
-    mailbox[5] = {BISHOP, WHITE};
-    mailbox[6] = {KNIGHT, WHITE};
-    mailbox[7] = {ROOK, WHITE};
-    mailbox[8] = {PAWN, WHITE};
-    mailbox[9] = {PAWN, WHITE};
-    mailbox[10] = {PAWN, WHITE};
-    mailbox[11] = {PAWN, WHITE};
-    mailbox[12] = {PAWN, WHITE};
-    mailbox[13] = {PAWN, WHITE};
-    mailbox[14] = {PAWN, WHITE};
-    mailbox[15] = {PAWN, WHITE};
+    // player to move
+    if (player_to_move_string == "w") {
+        player_to_move = WHITE;
+    } else {
+        player_to_move = BLACK;
+    }
+    std::cout << "player to move: "<< ((player_to_move == WHITE) ? "white" : "black") << '\n';
 
+    // castling rights
+    castling_rights = {false, false, false, false};
+    for (char c : castling_rights_string) {
+        if (c == 'K') {
+            castling_rights.white_king_side = true;
+        } else if (c == 'Q') {
+            castling_rights.white_queen_side = true;
+        } else if (c == 'k') {
+            castling_rights.black_king_side = true;
+        } else if (c == 'q') {
+            castling_rights.black_queen_side = true;
+        }
+    }
+    std::cout << "white_king_side: " << castling_rights.white_king_side << '\n';
+    std::cout << "white_queen_side: " << castling_rights.white_queen_side << '\n';
+    std::cout << "black_king_side: " << castling_rights.black_king_side << '\n';
+    std::cout << "black_queen_side: " << castling_rights.black_queen_side << '\n';
 
-    mailbox[48] = {PAWN, WHITE};
-    mailbox[49] = {PAWN, WHITE};
-    mailbox[50] = {PAWN, WHITE};
-    mailbox[51] = {PAWN, WHITE};
-    mailbox[52] = {PAWN, WHITE};
-    mailbox[53] = {PAWN, WHITE};
-    mailbox[54] = {PAWN, WHITE};
-    mailbox[55] = {PAWN, WHITE};
-    mailbox[56] = {ROOK, BLACK};
-    mailbox[57] = {KNIGHT, BLACK};
-    mailbox[58] = {BISHOP, BLACK};
-    mailbox[59] = {QUEEN, BLACK};
-    mailbox[60] = {KING, BLACK};
-    mailbox[61] = {BISHOP, BLACK};
-    mailbox[62] = {KNIGHT, BLACK};
-    mailbox[63] = {ROOK, BLACK};
+    // en passant target square
+    if (en_passant_target_square_string != "-") {
+        auto s = SquareMap.find(en_passant_target_square_string);
+        en_passant_target_square = s->second;
+    }
+    std::cout << "en passant target square: " << en_passant_target_square << '\n';
 
+    // counters
+    half_move_clock = std::stoi(half_move_clock_string);
+    std::cout << "half move clock: " << half_move_clock << '\n';
+    full_move_counter = std::stoi(full_move_counter_string);
+    std::cout << "full move counter: " << full_move_counter << '\n';
 }
 
 void Board::make_move(Square from, Square to) {
@@ -92,7 +143,9 @@ void Board::make_move(Square from, Square to) {
     occupancy[player_to_move] ^= from_bb;
     occupancy[2] ^= from_bb;
 
-    // handle capture
+    // todo: handle capture
+    // todo: handle castling
+    // todo: handle en passant
 
     // add to destination square
     bitboards[player_to_move][pieceType] ^= to_bb;
@@ -102,6 +155,10 @@ void Board::make_move(Square from, Square to) {
     // update mailbox
     mailbox[to] = mailbox[from];
     mailbox[from] = {NO_PIECE_TYPE, WHITE};
+
+    // todo: update half move clock
+    // todo: update full move counter
+    // todo: update player to move
 }
 
 void Board::print() {
@@ -111,7 +168,7 @@ void Board::print() {
     for (int rank = 7; rank >= 0; rank--) {
         std::cout << rank + 1 << " ";
         for (int file = 0; file < 8; file++) {
-            Square s =  static_cast<Square>(rank * 8 + file);
+            Square s = static_cast<Square>(rank * 8 + file);
             PieceType piece_type = get_piece_type_on_square(s);
             if (piece_type == NO_PIECE_TYPE) {
                 std::cout << "." << " ";
