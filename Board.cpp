@@ -1,6 +1,7 @@
 #include "Board.h"
 
 #include <sstream>
+#include <vector>
 
 #include "BitboardUtils.h"
 
@@ -94,7 +95,6 @@ void Board::setup_with_fen(std::string fen) {
     } else {
         player_to_move = BLACK;
     }
-    std::cout << "player to move: "<< ((player_to_move == WHITE) ? "white" : "black") << '\n';
 
     // castling rights
     castling_rights = {false, false, false, false};
@@ -109,28 +109,22 @@ void Board::setup_with_fen(std::string fen) {
             castling_rights.black_queen_side = true;
         }
     }
-    std::cout << "white_king_side: " << castling_rights.white_king_side << '\n';
-    std::cout << "white_queen_side: " << castling_rights.white_queen_side << '\n';
-    std::cout << "black_king_side: " << castling_rights.black_king_side << '\n';
-    std::cout << "black_queen_side: " << castling_rights.black_queen_side << '\n';
 
     // en passant target square
     if (en_passant_target_square_string != "-") {
         auto s = SquareMap.find(en_passant_target_square_string);
         en_passant_target_square = s->second;
     }
-    std::cout << "en passant target square: " << en_passant_target_square << '\n';
 
     // counters
     half_move_clock = std::stoi(half_move_clock_string);
-    std::cout << "half move clock: " << half_move_clock << '\n';
     full_move_counter = std::stoi(full_move_counter_string);
-    std::cout << "full move counter: " << full_move_counter << '\n';
 }
 
-void Board::make_move(Square from, Square to) {
-    PieceType pieceType = get_piece_type_on_square(from);
-    if (pieceType == NO_PIECE_TYPE) {
+void Board::make_move(Square from, Square to, PieceType promotion_piece_type) {
+    PieceType piece_type = get_piece_type_on_square(from);
+    Color piece_color = get_piece_color_on_square(from);
+    if (piece_type == NO_PIECE_TYPE) {
         std::cout << "no piece at square";
         return;
     }
@@ -139,26 +133,43 @@ void Board::make_move(Square from, Square to) {
     Bitboard to_bb = BitboardUtil::square_to_bitboard(to);
 
     // remove from source square
-    bitboards[player_to_move][pieceType] ^= from_bb;
+    bitboards[player_to_move][piece_type] ^= from_bb;
     occupancy[player_to_move] ^= from_bb;
-    occupancy[2] ^= from_bb;
+    occupancy[2] ^= from_bb; // both colors
 
-    // todo: handle capture
+    // capture
+    if (occupancy[!player_to_move] & to_bb) {
+        PieceType captured_piece_type = get_piece_type_on_square(to);
+
+        // remove captured piece
+        bitboards[!player_to_move][captured_piece_type] ^= to_bb;
+        occupancy[!player_to_move] ^= to_bb;
+        occupancy[2] ^= to_bb;
+    }
+
     // todo: handle castling
     // todo: handle en passant
+    // todo: handle promotion
+    if (promotion_piece_type != NO_PIECE_TYPE) {
+        // important: promotion will only work if promotion_piece_type is passed to this method, otherwise it will stay a pawn, it's up to move generation to handle this
+        piece_type = promotion_piece_type;
+    }
 
     // add to destination square
-    bitboards[player_to_move][pieceType] ^= to_bb;
+    bitboards[player_to_move][piece_type] ^= to_bb;
     occupancy[player_to_move] ^= to_bb;
-    occupancy[2] ^= to_bb;
+    occupancy[2] ^= to_bb; // both colors
 
     // update mailbox
-    mailbox[to] = mailbox[from];
+    mailbox[to] = {piece_type, player_to_move};
     mailbox[from] = {NO_PIECE_TYPE, WHITE};
 
-    // todo: update half move clock
-    // todo: update full move counter
-    // todo: update player to move
+    // update counters
+    half_move_clock++;
+    if (piece_color == BLACK) full_move_counter++;
+
+    // update player to move
+    player_to_move = player_to_move ? WHITE : BLACK;
 }
 
 void Board::print() {

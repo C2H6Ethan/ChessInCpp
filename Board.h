@@ -37,6 +37,7 @@ enum Color : uint8_t {
     WHITE, BLACK
 };
 
+// structs
 struct Piece {
     PieceType type : 3;  // Uses 3 bits (0-7)
     Color color : 1;     // Uses 1 bit (0-1)
@@ -69,6 +70,6 @@ public:
     void empty_board();
     void setup();
     void setup_with_fen(std::string fen);
-    void make_move(Square from, Square to);
+    void make_move(Square from, Square to, PieceType promotion_piece_type = NO_PIECE_TYPE);
     void print();
 };
