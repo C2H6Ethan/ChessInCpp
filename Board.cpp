@@ -122,52 +122,67 @@ void Board::setup_with_fen(std::string fen) {
 }
 
 void Board::make_move(Square from, Square to, PieceType promotion_piece_type) {
-    PieceType piece_type = get_piece_type_on_square(from);
-    Color piece_color = get_piece_color_on_square(from);
-    if (piece_type == NO_PIECE_TYPE) {
+    PieceType moving_piece_type = get_piece_type_on_square(from);
+    Color moving_color = get_piece_color_on_square(from);
+    if (moving_piece_type == NO_PIECE_TYPE) {
         std::cout << "no piece at square";
         return;
     }
+
+    // update counters
+    half_move_clock++;
+    if (player_to_move == BLACK) full_move_counter++;
 
     Bitboard from_bb = BitboardUtil::square_to_bitboard(from);
     Bitboard to_bb = BitboardUtil::square_to_bitboard(to);
 
     // remove from source square
-    bitboards[player_to_move][piece_type] ^= from_bb;
+    bitboards[player_to_move][moving_piece_type] ^= from_bb;
     occupancy[player_to_move] ^= from_bb;
     occupancy[2] ^= from_bb; // both colors
 
     // capture
-    if (occupancy[!player_to_move] & to_bb) {
+    if (occupancy[!moving_color] & to_bb) {
+        half_move_clock = 0; // reset half move clock on capture
+
         PieceType captured_piece_type = get_piece_type_on_square(to);
 
         // remove captured piece
-        bitboards[!player_to_move][captured_piece_type] ^= to_bb;
-        occupancy[!player_to_move] ^= to_bb;
+        bitboards[!moving_color][captured_piece_type] ^= to_bb;
+        occupancy[!moving_color] ^= to_bb;
         occupancy[2] ^= to_bb;
     }
 
     // todo: handle castling
-    // todo: handle en passant
 
+    if (moving_piece_type == PAWN) {
+        half_move_clock = 0; // reset half move clock on pawn move
 
-    if (promotion_piece_type != NO_PIECE_TYPE) {
-        // important: promotion will only work if promotion_piece_type is passed to this method, otherwise it will stay a pawn, it's up to move generation to handle this
-        piece_type = promotion_piece_type;
+        // todo: handle en passant: if pawn moved diagonally but target square is empty
+
+        // todo: instead of this precalculate pawn attack moves and then use if (pawn_attacks[moving_color][from] & to_bb && get_piece_type_on_square(to) == NO_PIECE_TYPE)
+        if (moving_color == WHITE) {
+            if (from + 7 == to || from + 9 == to) {
+                std::cout << "diagonal white pawn move";
+            }
+        }
+
+        if (promotion_piece_type != NO_PIECE_TYPE) {
+            // important: promotion will only work if promotion_piece_type is passed to this method, otherwise it will stay a pawn, it's up to move generation to handle this
+            moving_piece_type = promotion_piece_type;
+        }
     }
 
+
+
     // add to destination square
-    bitboards[player_to_move][piece_type] ^= to_bb;
-    occupancy[player_to_move] ^= to_bb;
+    bitboards[moving_color][moving_piece_type] ^= to_bb;
+    occupancy[moving_color] ^= to_bb;
     occupancy[2] ^= to_bb; // both colors
 
     // update mailbox
-    mailbox[to] = {piece_type, player_to_move};
+    mailbox[to] = {moving_piece_type, moving_color};
     mailbox[from] = {NO_PIECE_TYPE, WHITE};
-
-    // update counters
-    half_move_clock++;
-    if (piece_color == BLACK) full_move_counter++;
 
     // update player to move
     player_to_move = player_to_move ? WHITE : BLACK;
