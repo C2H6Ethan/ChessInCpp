@@ -149,7 +149,8 @@ void Board::make_move(Square from, Square to, PieceType promotion_piece_type) {
 
     // todo: handle castling
     // todo: handle en passant
-    // todo: handle promotion
+
+
     if (promotion_piece_type != NO_PIECE_TYPE) {
         // important: promotion will only work if promotion_piece_type is passed to this method, otherwise it will stay a pawn, it's up to move generation to handle this
         piece_type = promotion_piece_type;
