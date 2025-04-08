@@ -31,9 +31,6 @@ void Board::init_pawn_attacks() {
     }
 }
 
-constexpr Square ROOK_FROM[2][2] = {{a1, h1}, {a8, h8}};
-constexpr Square ROOK_TO[2][2]   = {{d1, f1}, {d8, f8}};
-
 
 #pragma endregion
 
@@ -240,12 +237,14 @@ void Board::make_move(Square from, Square to, PieceType promotion_piece_type) {
             castling_rights.black_queen_side = false;
         }
 
-        if (to == from + 2 || to == from - 2) {
+        if (square_diff(from, to)) {
             // castle move
             int side = (to > from); // 0=queenside, 1=kingside
             Bitboard rook_move = castling_rook_moves[from][side];
-            Square rook_from = ROOK_FROM[moving_color][side];
-            Square rook_to   = ROOK_TO[moving_color][side];
+            Square rook_from = (side == 0) ? (moving_color == WHITE ? a1 : a8)
+                               : (moving_color == WHITE ? h1 : h8);
+            Square rook_to   = (side == 0) ? (moving_color == WHITE ? d1 : d8)
+                                           : (moving_color == WHITE ? f1 : f8);
 
             // replace rooks
             bitboards[moving_color][ROOK] ^= rook_move;
