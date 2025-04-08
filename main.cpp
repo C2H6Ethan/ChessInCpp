@@ -6,6 +6,7 @@
 
 
 int main() {
+    // todo: update Move class https://github.com/nkarve/surge/blob/master/src/types.h
     Board board;
     return 0;
 }
