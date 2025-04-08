@@ -4,6 +4,8 @@
 #include <vector>
 #include <iostream>
 
+#include "Move.h"
+
 // Constants
 namespace {
     const std::string whitePiecesString = "PNBRQK";
@@ -167,7 +169,10 @@ void Board::setup_with_fen(std::string fen) {
 
 // ============= Move Execution =============
 
-void Board::make_move(Square from, Square to, PieceType promotion_piece_type) {
+void Board::make_move(Move move) {
+    Square from = move.from();
+    Square to = move.to();
+
     PieceType moving_piece = get_piece_type_on_square(from);
     Color moving_color = get_piece_color_on_square(from);
 
@@ -207,7 +212,7 @@ void Board::make_move(Square from, Square to, PieceType promotion_piece_type) {
             break;
 
         case PAWN:
-            handle_pawn_move(from, to, moving_color, to_bb, promotion_piece_type);
+            handle_pawn_move(from, to, moving_color, to_bb, move.promotion_type());
             break;
 
         case KING:
@@ -218,13 +223,16 @@ void Board::make_move(Square from, Square to, PieceType promotion_piece_type) {
             break;
     }
 
-    // Add piece to destination
-    bitboards[moving_color][moving_piece] ^= to_bb;
-    occupancy[moving_color] ^= to_bb;
-    occupancy[BOTH] ^= to_bb;
+    // Add piece to destination (unless it was a promotion)
+    if (moving_piece != PAWN || !move.is_promotion()) {
+        bitboards[moving_color][moving_piece] ^= to_bb;
+        occupancy[moving_color] ^= to_bb;
+        occupancy[BOTH] ^= to_bb;
+    }
 
     // Update mailbox
-    mailbox[to] = {moving_piece, moving_color};
+    mailbox[to] = {move.is_promotion() ? move.promotion_type() : moving_piece,
+                  moving_color};
     mailbox[from] = {NO_PIECE_TYPE, WHITE};
 
     // Switch player
@@ -264,7 +272,6 @@ void Board::handle_pawn_move(Square from, Square to, Color color, Bitboard to_bb
     if (promotion != NO_PIECE_TYPE) {
         bitboards[color][PAWN] ^= to_bb;
         bitboards[color][promotion] ^= to_bb;
-        mailbox[to].type = promotion;
     }
 }
 

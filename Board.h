@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <iostream>
 
+class Move;
 // ============= Basic Types =============
 using Bitboard = uint64_t;
 
@@ -86,7 +87,7 @@ public:
     void setup_with_fen(std::string fen);
 
     // Game operations
-    void make_move(Square from, Square to, PieceType promotion_piece_type = NO_PIECE_TYPE);
+    void make_move(Move move);
 
     // Accessors
     PieceType get_piece_type_on_square(Square s);
