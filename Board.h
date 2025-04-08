@@ -3,10 +3,9 @@
 #include <string>
 #include <unordered_map>
 
-// Type Aliases
+
 using Bitboard = uint64_t;
 
-// Enums
 enum Square : uint64_t {
     a1, b1, c1, d1, e1, f1, g1, h1,
     a2, b2, c2, d2, e2, f2, g2, h2,
@@ -28,6 +27,10 @@ inline std::unordered_map<std::string, Square> SquareMap = {
     {"a7", a7}, {"b7", b7}, {"c7", c7}, {"d7", d7}, {"e7", e7}, {"f7", f7}, {"g7", g7}, {"h7", h7},
     {"a8", a8}, {"b8", b8}, {"c8", c8}, {"d8", d8}, {"e8", e8}, {"f8", f8}, {"g8", g8}, {"h8", h8}
 };
+
+constexpr uint64_t square_diff(Square a, Square b) {
+    return (a > b) ? (a - b) : (b - a);
+}
 
 enum PieceType : uint8_t {
     PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, PIECE_TYPE_COUNT, NO_PIECE_TYPE
@@ -61,8 +64,12 @@ private:
     CastlingRights castling_rights;
     Square en_passant_target_square;
 
+    Bitboard pawn_attacks[2][64];
+    Bitboard castling_rook_moves[64][2]; // [square][0=queenside, 1=kingside]
+
     PieceType get_piece_type_on_square(Square s);
     Color get_piece_color_on_square(Square s);
+    void init_pawn_attacks();
 
 public:
     Board() {empty_board();}

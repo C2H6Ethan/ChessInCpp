@@ -5,6 +5,38 @@
 
 #include "BitboardUtils.h"
 
+#pragma region move bitboards precalculation
+
+void Board::init_pawn_attacks() {
+    Bitboard not_a_file = ~0x0101010101010101ULL;
+    Bitboard not_h_file = ~0x8080808080808080ULL;
+    for (int square = 0; square < 64; square++) {
+        // white
+        Bitboard west_attacks = BitboardUtil::square_to_bitboard(static_cast<Square>(square)) << 7;
+        Bitboard east_attacks = BitboardUtil::square_to_bitboard(static_cast<Square>(square)) << 9;
+        // remove moves on A and H file preventing warp issues
+        west_attacks = west_attacks & not_h_file;
+        east_attacks = east_attacks & not_a_file;
+
+        pawn_attacks[WHITE][square] = west_attacks | east_attacks;
+
+        // black
+        east_attacks = BitboardUtil::square_to_bitboard(static_cast<Square>(square)) >> 7;
+        west_attacks = BitboardUtil::square_to_bitboard(static_cast<Square>(square)) >> 9;
+        // remove moves on A and H file preventing warp issues
+        west_attacks = west_attacks & not_h_file;
+        east_attacks = east_attacks & not_a_file;
+
+        pawn_attacks[BLACK][square] = west_attacks | east_attacks;
+    }
+}
+
+constexpr Square ROOK_FROM[2][2] = {{a1, h1}, {a8, h8}};
+constexpr Square ROOK_TO[2][2]   = {{d1, f1}, {d8, f8}};
+
+
+#pragma endregion
+
 void Board::empty_board() {
     for (auto& color : bitboards) {
         for (auto& pieceBitboard : color) {
@@ -19,6 +51,8 @@ void Board::empty_board() {
     for (auto & i : mailbox) {
         i = {NO_PIECE_TYPE, WHITE};
     }
+
+    init_pawn_attacks();
 
     player_to_move = WHITE;
     castling_rights = {true, true, true, true};
@@ -133,6 +167,9 @@ void Board::make_move(Square from, Square to, PieceType promotion_piece_type) {
     half_move_clock++;
     if (player_to_move == BLACK) full_move_counter++;
 
+    // reset en passant target square
+    en_passant_target_square = NO_SQUARE;
+
     Bitboard from_bb = BitboardUtil::square_to_bitboard(from);
     Bitboard to_bb = BitboardUtil::square_to_bitboard(to);
 
@@ -153,23 +190,70 @@ void Board::make_move(Square from, Square to, PieceType promotion_piece_type) {
         occupancy[2] ^= to_bb;
     }
 
-    // todo: handle castling
-
-    if (moving_piece_type == PAWN) {
+    if (moving_piece_type == ROOK) {
+        if (moving_color == WHITE) {
+            if (from == 0) {
+                castling_rights.white_queen_side = false;
+            } else if (from == 7) {
+                castling_rights.white_king_side = false;
+            }
+        } else {
+            if (from == 56) {
+                castling_rights.black_queen_side = false;
+            } else if (from == 63) {
+                castling_rights.black_king_side = false;
+            }
+        }
+    } else if (moving_piece_type == PAWN) {
         half_move_clock = 0; // reset half move clock on pawn move
 
-        // todo: handle en passant: if pawn moved diagonally but target square is empty
-
-        // todo: instead of this precalculate pawn attack moves and then use if (pawn_attacks[moving_color][from] & to_bb && get_piece_type_on_square(to) == NO_PIECE_TYPE)
-        if (moving_color == WHITE) {
-            if (from + 7 == to || from + 9 == to) {
-                std::cout << "diagonal white pawn move";
+        if (square_diff(from, to) == 16) {
+            // checks if pawn double pushed
+            en_passant_target_square = Square((from + to) / 2); // midpoint
+        } else if (pawn_attacks[moving_color][from] & to_bb && get_piece_type_on_square(to) == NO_PIECE_TYPE) {
+            // checks if pawn move was an attack move, then checks if there is no piece at the destination square
+            // en passant capture move
+            Bitboard pawn_to_remove_bb;
+            if (moving_color == WHITE) {
+                pawn_to_remove_bb = to_bb >> 8;
+            } else {
+                pawn_to_remove_bb = to_bb << 8;
             }
+
+            // remove captured en passant pawn
+            bitboards[!moving_color][PAWN] ^= pawn_to_remove_bb;
+            occupancy[!moving_color] ^= pawn_to_remove_bb;
+            occupancy[2] ^= pawn_to_remove_bb;
+            mailbox[BitboardUtil::bitboard_to_square(pawn_to_remove_bb)] = {NO_PIECE_TYPE, WHITE};
         }
 
         if (promotion_piece_type != NO_PIECE_TYPE) {
             // important: promotion will only work if promotion_piece_type is passed to this method, otherwise it will stay a pawn, it's up to move generation to handle this
             moving_piece_type = promotion_piece_type;
+        }
+    } else if (moving_piece_type == KING) {
+        if (moving_color == WHITE) {
+            castling_rights.white_king_side = false;
+            castling_rights.white_queen_side = false;
+        } else {
+            castling_rights.black_king_side = false;
+            castling_rights.black_queen_side = false;
+        }
+
+        if (to == from + 2 || to == from - 2) {
+            // castle move
+            int side = (to > from); // 0=queenside, 1=kingside
+            Bitboard rook_move = castling_rook_moves[from][side];
+            Square rook_from = ROOK_FROM[moving_color][side];
+            Square rook_to   = ROOK_TO[moving_color][side];
+
+            // replace rooks
+            bitboards[moving_color][ROOK] ^= rook_move;
+            occupancy[moving_color] ^= rook_move;
+            occupancy[2] ^= rook_move;
+
+            mailbox[rook_from] = {NO_PIECE_TYPE, WHITE};
+            mailbox[rook_to] = {ROOK, moving_color};
         }
     }
 
