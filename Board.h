@@ -66,12 +66,9 @@ private:
 
     // Precomputed attack tables
     Bitboard pawn_attacks[BOTH][64];          // [color][square]
-    Bitboard pawn_pushes[BOTH][64];
-    Bitboard castling_rook_moves[64][2];   // [square][0=queenside, 1=kingside]
 
     // Initialization
     void init_pawn_attacks();
-    void init_pawn_pushes();
 
     // Move helpers
     void update_rook_castling_rights(Square from, Color color);

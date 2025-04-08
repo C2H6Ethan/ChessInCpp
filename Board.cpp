@@ -1,4 +1,7 @@
 #include "Board.h"
+
+#include <array>
+
 #include "BitboardUtils.h"
 #include <sstream>
 #include <vector>
@@ -11,6 +14,34 @@ namespace {
     const std::string whitePiecesString = "PNBRQK";
     const std::string blackPiecesString = "pnbrqk";
 }
+
+consteval auto init_pawn_pushes_table() {
+    std::array<std::array<Bitboard, 64>, 2> table = {};
+    constexpr Bitboard FileA = 0x0101010101010101ULL;
+    constexpr Bitboard FileH = 0x8080808080808080ULL;
+
+    for (int sq = 0; sq < 64; ++sq) {
+        const Bitboard bb = 1ULL << sq;
+
+        // White pawn pushes
+        table[WHITE][sq] = (bb << 8); // Single push
+        if (bb & 0xFF00ULL) { // If on 2nd rank (no need for Rank2 constant)
+            table[WHITE][sq] |= (bb << 16); // Add double push
+        }
+
+        // Black pawn pushes
+        table[BLACK][sq] = (bb >> 8); // Single push
+        if (bb & 0xFF000000000000ULL) { // If on 7th rank
+            table[BLACK][sq] |= (bb >> 16); // Add double push
+        }
+    }
+    return table;
+}
+
+constexpr auto PAWN_PUSHES = init_pawn_pushes_table();
+
+//todo: precompute pawn attacks aswell
+
 
 // ============= Initialization Methods =============
 
@@ -31,37 +62,12 @@ void Board::init_pawn_attacks() {
     }
 }
 
-void Board::init_pawn_pushes() {
-    for (int square = 0; square < 64; square++) {
-        // White pawn pushes
-        if (square >= 8 && square <= 15) {
-            // 2nd rank
-            Bitboard double_pawn_push = BitboardUtil::square_to_bitboard(static_cast<Square>(square)) << 8 | BitboardUtil::square_to_bitboard(static_cast<Square>(square)) << 16;
-            pawn_pushes[WHITE][square] = double_pawn_push;
-        } else if (square >= 16 && square <= 55) {
-            // 3rd - 7th rank
-            Bitboard pawn_push = BitboardUtil::square_to_bitboard(static_cast<Square>(square)) << 8;
-            pawn_pushes[WHITE][square] = pawn_push;
-        } else {
-            pawn_pushes[WHITE][square] = 0ULL;
-        }
-
-        // Black pawn pushes
-        if (square >= 48 && square <= 55) {
-            // 7th rank
-            Bitboard double_pawn_push = BitboardUtil::square_to_bitboard(static_cast<Square>(square)) >> 8 | BitboardUtil::square_to_bitboard(static_cast<Square>(square)) >> 16;
-            pawn_pushes[BLACK][square] = double_pawn_push;
-        } else if (square <= 47 && square >= 8) {
-            // 6th - 2nd rank
-            Bitboard pawn_push = BitboardUtil::square_to_bitboard(static_cast<Square>(square)) >> 8;
-            pawn_pushes[BLACK][square] = pawn_push;
-        } else {
-            pawn_pushes[BLACK][square] = 0ULL;
-        }
-    }
-}
 
 Board::Board() {
+
+    for (int i = 0; i < 64; i++) {
+        BitboardUtil::print_bitboard(PAWN_PUSHES[WHITE][i]);
+    }
     // Clear bitboards
     for (auto& color : bitboards) {
         for (auto& pieceBitboard : color) {
@@ -78,10 +84,6 @@ Board::Board() {
     for (auto& piece : mailbox) {
         piece = {NO_PIECE_TYPE, WHITE};
     }
-
-    // Precompute attack tables
-    init_pawn_attacks();
-    init_pawn_pushes();
 
     // Set default game state
     player_to_move = WHITE;
