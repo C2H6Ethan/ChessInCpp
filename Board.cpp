@@ -1,6 +1,7 @@
 #include "Board.h"
 
 #include <array>
+#include <cassert>
 
 #include "BitboardUtils.h"
 #include <sstream>
@@ -15,6 +16,7 @@ namespace {
     const std::string blackPiecesString = "pnbrqk";
 }
 
+// Precompute attack/move tables
 consteval auto init_pawn_pushes_table() {
     std::array<std::array<Bitboard, 64>, 2> table = {};
     constexpr Bitboard FileA = 0x0101010101010101ULL;
@@ -38,14 +40,8 @@ consteval auto init_pawn_pushes_table() {
     return table;
 }
 
-constexpr auto PAWN_PUSHES = init_pawn_pushes_table();
-
-//todo: precompute pawn attacks aswell
-
-
-// ============= Initialization Methods =============
-
-void Board::init_pawn_attacks() {
+consteval auto init_pawn_attacks() {
+    std::array<std::array<Bitboard, 64>, 2> table = {};
     const Bitboard not_a_file = ~0x0101010101010101ULL;
     const Bitboard not_h_file = ~0x8080808080808080ULL;
 
@@ -53,21 +49,26 @@ void Board::init_pawn_attacks() {
         // White pawn attacks
         Bitboard west_attack = BitboardUtil::square_to_bitboard(static_cast<Square>(square)) << 7;
         Bitboard east_attack = BitboardUtil::square_to_bitboard(static_cast<Square>(square)) << 9;
-        pawn_attacks[WHITE][square] = (west_attack & not_h_file) | (east_attack & not_a_file);
+        table[WHITE][square] = (west_attack & not_h_file) | (east_attack & not_a_file);
 
         // Black pawn attacks
         east_attack = BitboardUtil::square_to_bitboard(static_cast<Square>(square)) >> 7;
         west_attack = BitboardUtil::square_to_bitboard(static_cast<Square>(square)) >> 9;
-        pawn_attacks[BLACK][square] = (west_attack & not_h_file) | (east_attack & not_a_file);
+        table[BLACK][square] = (west_attack & not_h_file) | (east_attack & not_a_file);
     }
+
+    return table;
 }
+
+constexpr auto PAWN_PUSHES = init_pawn_pushes_table();
+constexpr auto PAWN_ATTACKS = init_pawn_attacks();
+
+
+
+// ============= Initialization Methods =============
 
 
 Board::Board() {
-
-    for (int i = 0; i < 64; i++) {
-        BitboardUtil::print_bitboard(PAWN_PUSHES[WHITE][i]);
-    }
     // Clear bitboards
     for (auto& color : bitboards) {
         for (auto& pieceBitboard : color) {
@@ -171,145 +172,216 @@ void Board::setup_with_fen(std::string fen) {
 
 // ============= Move Execution =============
 
-void Board::make_move(Move move) {
-    Square from = move.from();
-    Square to = move.to();
+void Board::move(Move m) {
+    const Square from = m.from();
+    const Square to = m.to();
+    const MoveFlags type = m.flags();
 
-    PieceType moving_piece = get_piece_type_on_square(from);
-    Color moving_color = get_piece_color_on_square(from);
+    ++game_ply;
+    history[game_ply] = UndoInfo(history[game_ply - 1]);
+    history[game_ply].entry |= BitboardUtil::square_to_bitboard(to) | BitboardUtil::square_to_bitboard(from);
 
-    if (moving_piece == NO_PIECE_TYPE) {
-        std::cout << "No piece at square\n";
-        return;
+    switch (type) {
+        case QUIET:
+            // no piece at destination
+            make_quiet_move(from, to);
+            break;
+        case DOUBLE_PUSH:
+            // double pawn push
+            make_quiet_move(from, to);
+            history[game_ply].epsq = Square(m.from() + relative_dir(NORTH));
+            break;
+        case OO:
+            // king side castle
+            if (player_to_move == WHITE) {
+                make_quiet_move(e1, g1);
+                make_quiet_move(h1, f1);
+            } else {
+                make_quiet_move(e8, g8);
+                make_quiet_move(h8, f8);
+            }
+            break;
+        case OOO:
+            // queen side castle
+            if (player_to_move == WHITE) {
+                make_quiet_move(e1, c1);
+                make_quiet_move(a1, d1);
+            } else {
+                make_quiet_move(e8, c8);
+                make_quiet_move(a8, d8);
+            }
+            break;
+        case EN_PASSANT:
+            make_quiet_move(from, to);
+            remove_piece(static_cast<Square>(to + relative_dir(SOUTH)));
+            break;
+        case PR_KNIGHT:
+            remove_piece(from);
+            put_piece(to, Piece(KNIGHT, player_to_move));
+            break;
+        case PR_BISHOP:
+            remove_piece(from);
+            put_piece(to, Piece(BISHOP, player_to_move));
+            break;
+        case PR_ROOK:
+            remove_piece(from);
+            put_piece(to, Piece(ROOK, player_to_move));
+            break;
+        case PR_QUEEN:
+            remove_piece(from);
+            put_piece(to, Piece(QUEEN, player_to_move));
+            break;
+        case PC_KNIGHT:
+            remove_piece(from);
+            history[game_ply].captured = mailbox[to];
+            remove_piece(to);
+            put_piece(to, Piece(KNIGHT, player_to_move));
+            break;
+        case PC_BISHOP:
+            remove_piece(from);
+            history[game_ply].captured = mailbox[to];
+            remove_piece(to);
+            put_piece(to, Piece(BISHOP, player_to_move));
+            break;
+        case PC_ROOK:
+            remove_piece(from);
+            history[game_ply].captured = mailbox[to];
+            remove_piece(to);
+            put_piece(to, Piece(ROOK, player_to_move));
+            break;
+        case PC_QUEEN:
+            remove_piece(from);
+            history[game_ply].captured = mailbox[to];
+            remove_piece(to);
+            put_piece(to, Piece(QUEEN, player_to_move));
+            break;
+        case CAPTURE:
+            history[game_ply].captured = mailbox[to];
+            make_move(from, to);
+            break;
     }
 
-    // Update move counters
-    half_move_clock++;
-    if (player_to_move == BLACK) full_move_counter++;
-
-    // Reset en passant target
-    en_passant_target_square = NO_SQUARE;
-
-    Bitboard from_bb = BitboardUtil::square_to_bitboard(from);
-    Bitboard to_bb = BitboardUtil::square_to_bitboard(to);
-
-    // Remove piece from source
-    bitboards[moving_color][moving_piece] ^= from_bb;
-    occupancy[moving_color] ^= from_bb;
-    occupancy[BOTH] ^= from_bb;
-
-    // Handle captures
-    if (occupancy[!moving_color] & to_bb) {
-        half_move_clock = 0;
-        PieceType captured = get_piece_type_on_square(to);
-        bitboards[!moving_color][captured] ^= to_bb;
-        occupancy[!moving_color] ^= to_bb;
-        occupancy[BOTH] ^= to_bb;
-    }
-
-    // Handle special moves
-    switch (moving_piece) {
-        case ROOK:
-            update_rook_castling_rights(from, moving_color);
-            break;
-
-        case PAWN:
-            handle_pawn_move(from, to, moving_color, to_bb, move.promotion_type());
-            break;
-
-        case KING:
-            handle_king_move(from, to, moving_color);
-            break;
-
-        default:
-            break;
-    }
-
-    // Add piece to destination (unless it was a promotion)
-    if (moving_piece != PAWN || !move.is_promotion()) {
-        bitboards[moving_color][moving_piece] ^= to_bb;
-        occupancy[moving_color] ^= to_bb;
-        occupancy[BOTH] ^= to_bb;
-    }
-
-    // Update mailbox
-    mailbox[to] = {move.is_promotion() ? move.promotion_type() : moving_piece,
-                  moving_color};
-    mailbox[from] = {NO_PIECE_TYPE, WHITE};
-
-    // Switch player
     player_to_move = static_cast<Color>(!static_cast<bool>(player_to_move));
 }
 
+void Board::undo_move(Move m) {
+    // move must be last move made
+    const Square from = m.from();
+    const Square to = m.to();
+    const MoveFlags type = m.flags();
+
+    player_to_move = static_cast<Color>(!static_cast<bool>(player_to_move)); // switch player to move so it's the one who made the move
+
+    switch (type) {
+        case QUIET:
+        case DOUBLE_PUSH:
+            make_quiet_move(to, from);
+            break;
+        case OO:
+            if (player_to_move == WHITE) {
+                make_quiet_move(g1, e1);
+                make_quiet_move(f1, h1);
+            } else {
+                make_quiet_move(g8, e8);
+                make_quiet_move(f8, h8);
+            }
+            break;
+        case OOO:
+            if (player_to_move == WHITE) {
+                make_quiet_move(c1, e1);
+                make_quiet_move(d1, a1);
+            } else {
+                make_quiet_move(c8, e8);
+                make_quiet_move(d8, a8);
+            }
+            break;
+        case EN_PASSANT:
+            make_quiet_move(to, from);
+            put_piece(static_cast<Square>(to + relative_dir(SOUTH)), Piece(PAWN, player_to_move == WHITE ? BLACK : WHITE));
+            break;
+        case PR_KNIGHT:
+        case PR_BISHOP:
+        case PR_ROOK:
+        case PR_QUEEN:
+            remove_piece(to);
+            put_piece(from, Piece(PAWN, player_to_move));
+            break;
+        case PC_KNIGHT:
+        case PC_BISHOP:
+        case PC_ROOK:
+        case PC_QUEEN:
+            remove_piece(to);
+            put_piece(to, history[game_ply].captured);
+            put_piece(from, Piece(PAWN, player_to_move));
+            break;
+        case CAPTURE:
+            make_quiet_move(to, from);
+            put_piece(to, history[game_ply].captured);
+            break;
+    }
+
+    game_ply--;
+}
+
+
 // ============= Helper Methods =============
 
-void Board::update_rook_castling_rights(Square from, Color color) {
-    if (color == WHITE) {
-        if (from == a1) castling_rights.white_queen_side = false;
-        else if (from == h1) castling_rights.white_king_side = false;
+void Board::make_move(Square from, Square to) {
+    // a piece may be at target square
+    Piece moving_piece = mailbox[from];
+
+    Piece destination_piece = mailbox[to];
+    if (destination_piece.type != NO_PIECE_TYPE) {
+        remove_piece(to);
     }
-    else {
-        if (from == a8) castling_rights.black_queen_side = false;
-        else if (from == h8) castling_rights.black_king_side = false;
-    }
+
+    remove_piece(from);
+    put_piece(to, moving_piece);
 }
 
-void Board::handle_pawn_move(Square from, Square to, Color color, Bitboard to_bb, PieceType promotion) {
-    half_move_clock = 0;
-
-    // Handle double push
-    if (square_diff(from, to) == 16) {
-        en_passant_target_square = static_cast<Square>((from + to) / 2);
-    }
-    // Handle en passant
-    else if ((pawn_attacks[color][from] & to_bb) && (get_piece_type_on_square(to) == NO_PIECE_TYPE)) {
-        Bitboard captured_bb = (color == WHITE) ? (to_bb >> 8) : (to_bb << 8);
-        bitboards[!color][PAWN] ^= captured_bb;
-        occupancy[!color] ^= captured_bb;
-        occupancy[BOTH] ^= captured_bb;
-        mailbox[BitboardUtil::bitboard_to_square(captured_bb)] = {NO_PIECE_TYPE, WHITE};
-    }
-
-    // Handle promotion
-    if (promotion != NO_PIECE_TYPE) {
-        bitboards[color][PAWN] ^= to_bb;
-        bitboards[color][promotion] ^= to_bb;
-    }
+void Board::make_quiet_move(Square from, Square to) {
+    // no piece at destination square
+    Piece moving_piece = mailbox[from];
+    remove_piece(from);
+    put_piece(to, moving_piece);
 }
 
-void Board::handle_king_move(Square from, Square to, Color color) {
-    // Remove castling rights
-    if (color == WHITE) {
-        castling_rights.white_king_side = false;
-        castling_rights.white_queen_side = false;
-    }
-    else {
-        castling_rights.black_king_side = false;
-        castling_rights.black_queen_side = false;
-    }
 
-    // Handle castling
-    if (square_diff(from, to) > 1) {
-        int side = (to > from); // 0=queenside, 1=kingside
-        Square rook_from = (side == 0) ?
-            (color == WHITE ? a1 : a8) :
-            (color == WHITE ? h1 : h8);
+void Board::remove_piece(Square s) {
+    // there must be a piece on this square
+    assert(mailbox[s].type != NO_PIECE_TYPE && "Trying to remove a piece from an empty square.");
+    Bitboard square_bb = BitboardUtil::square_to_bitboard(s);
+    Color owner = get_piece_color_on_square(s);
+    PieceType type = get_piece_type_on_square(s);
 
-        Square rook_to = (side == 0) ?
-            (color == WHITE ? d1 : d8) :
-            (color == WHITE ? f1 : f8);
+    bitboards[owner][type] ^= square_bb;
+    occupancy[owner] ^= square_bb;
+    occupancy[BOTH] ^= square_bb;
 
-        Bitboard rook_move = BitboardUtil::square_to_bitboard(rook_from) | BitboardUtil::square_to_bitboard(rook_to);
-
-        // Move rook
-        bitboards[color][ROOK] ^= rook_move;
-        occupancy[color] ^= rook_move;
-        occupancy[BOTH] ^= rook_move;
-
-        mailbox[rook_from] = {NO_PIECE_TYPE, WHITE};
-        mailbox[rook_to] = {ROOK, color};
-    }
+    mailbox[s].type = NO_PIECE_TYPE;
 }
+
+void Board::put_piece(Square s, Piece p) {
+    // square must be empty
+    assert(mailbox[s].type == NO_PIECE_TYPE && "Trying to ad a piece to a non empty square.");
+    Bitboard square_bb = BitboardUtil::square_to_bitboard(s);
+    Color owner = p.color;
+    PieceType type = p.type;
+
+    bitboards[owner][type] ^= square_bb;
+    occupancy[owner] ^= square_bb;
+    occupancy[BOTH] ^= square_bb;
+
+    mailbox[s] = p;
+}
+
+int Board::relative_dir(Direction dir) {
+    return player_to_move == WHITE ? dir : -dir;
+}
+
+
+
+
 
 // ============= Display Methods =============
 

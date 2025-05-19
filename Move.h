@@ -2,51 +2,53 @@
 
 #include "Board.h"
 
-// Simplified move flags
-enum MoveFlags : uint8_t {
-    QUIET        = 0x00,  // Normal move
-    EN_PASSANT   = 0x01,  // Special capture
-    CASTLING     = 0x02,  // King + rook move
-
-    // Promotion types (bits 3-4)
-    PROMO_KNIGHT = 0x04,  // 0100
-    PROMO_BISHOP = 0x05,  // 0101
-    PROMO_ROOK   = 0x06,  // 0110
-    PROMO_QUEEN  = 0x07,  // 0111
-
-    // Masks
-    PROMO_MASK   = 0x07   // Mask for all flags
+//The type of the move
+enum MoveFlags : int {
+    QUIET = 0b0000, DOUBLE_PUSH = 0b0001,
+        OO = 0b0010, OOO = 0b0011,
+    CAPTURE = 0b1000,
+    CAPTURES = 0b1111,
+    EN_PASSANT = 0b1010,
+    PROMOTIONS = 0b0111,
+    PROMOTION_CAPTURES = 0b1100,
+    PR_KNIGHT = 0b0100, PR_BISHOP = 0b0101, PR_ROOK = 0b0110, PR_QUEEN = 0b0111,
+    PC_KNIGHT = 0b1100, PC_BISHOP = 0b1101, PC_ROOK = 0b1110, PC_QUEEN = 0b1111,
 };
 
+
 class Move {
+private:
+    //The internal representation of the move
+    uint16_t move;
 public:
-    Move() : m_data(0) {}
+    //Defaults to a null move (a1a1)
+    inline Move() : move(0) {}
 
-    // Optimized constructor
-    Move(Square from, Square to, uint8_t flags = QUIET)
-        : m_data((flags << 12) | (from << 6) | to) {}
+    inline Move(uint16_t m) { move = m; }
 
-    // Fast accessors
-    Square from() const { return static_cast<Square>((m_data >> 6) & 0x3F); }
-    Square to() const { return static_cast<Square>(m_data & 0x3F); }
-    uint8_t flags() const { return (m_data >> 12) & PROMO_MASK; }
-
-    // Critical checks (kept for special moves)
-    bool is_en_passant() const { return flags() == EN_PASSANT; }
-    bool is_castling() const { return flags() == CASTLING; }
-    bool is_promotion() const { return flags() >= PROMO_KNIGHT; }
-
-    // Promotion type (branchless)
-    PieceType promotion_type() const {
-        return static_cast<PieceType>((flags() & 0x03) + KNIGHT);
+    inline Move(Square from, Square to) : move(0) {
+        move = (from << 6) | to;
     }
 
-    // Comparison
-    bool operator==(const Move& other) const { return m_data == other.m_data; }
+    inline Move(Square from, Square to, MoveFlags flags) : move(0) {
+        move = (flags << 12) | (from << 6) | to;
+    }
 
-    // Compact storage
-    uint16_t value() const { return m_data; }
+    // Move(const std::string& move) {
+    //     this->move = (create_square(File(move[0] - 'a'), Rank(move[1] - '1')) << 6) |
+    //         create_square(File(move[2] - 'a'), Rank(move[3] - '1'));
+    // }
 
-private:
-    uint16_t m_data; // 16-bit: [flags:4][from:6][to:6]
+    inline Square to() const { return Square(move & 0x3f); }
+    inline Square from() const { return Square((move >> 6) & 0x3f); }
+    inline int to_from() const { return move & 0xffff; }
+    inline MoveFlags flags() const { return MoveFlags((move >> 12) & 0xf); }
+
+    inline bool is_capture() const {
+        return (move >> 12) & CAPTURES;
+    }
+
+    void operator=(Move m) { move = m.move; }
+    bool operator==(Move a) const { return to_from() == a.to_from(); }
+    bool operator!=(Move a) const { return to_from() != a.to_from(); }
 };

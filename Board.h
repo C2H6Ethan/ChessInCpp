@@ -26,8 +26,19 @@ enum PieceType : uint8_t {
     PIECE_TYPE_COUNT, NO_PIECE_TYPE
 };
 
-enum Color : uint8_t {
+enum Color : int {
     WHITE, BLACK
+};
+
+enum Direction {
+    NORTH = 8,
+    SOUTH = -8,
+    EAST = 1,
+    WEST = -1,
+    NORTH_EAST = NORTH + EAST,
+    NORTH_WEST = NORTH + WEST,
+    SOUTH_EAST = SOUTH + EAST,
+    SOUTH_WEST = SOUTH + WEST
 };
 
 // Separate constant for occupancy tracking
@@ -47,6 +58,26 @@ struct CastlingRights {
     bool black_queen_side : 1;
 };
 
+//Stores position information which cannot be recovered on undo-ing a move
+struct UndoInfo {
+    //The bitboard of squares on which pieces have either moved from, or have been moved to. Used for castling
+    //legality checks
+    Bitboard entry;
+
+    //The piece that was captured on the last move
+    Piece captured;
+
+    //The en passant square. This is the square which pawns can move to in order to en passant capture an enemy pawn that has
+    //double pushed on the previous move
+    Square epsq;
+
+    constexpr UndoInfo() : entry(0), captured(NO_PIECE_TYPE), epsq(NO_SQUARE) {}
+
+    //This preserves the entry bitboard across moves
+    UndoInfo(const UndoInfo& prev) :
+        entry(prev.entry), captured(NO_PIECE_TYPE), epsq(NO_SQUARE) {}
+};
+
 // ============= Board Class =============
 class Board {
 private:
@@ -56,6 +87,9 @@ private:
     // Occupancy [WHITE, BLACK, BOTH]
     Bitboard occupancy[3];
 
+    // amount of single moves (half moves)
+    int game_ply;
+
     // Game state
     Piece mailbox[64];          // 64 bytes
     Color player_to_move;       // 1 byte
@@ -64,27 +98,27 @@ private:
     uint8_t half_move_clock;    // 1 byte
     uint16_t full_move_counter; // 2 bytes
 
-    // Precomputed attack tables
-    Bitboard pawn_attacks[BOTH][64];          // [color][square]
-
-    // Initialization
-    void init_pawn_attacks();
 
     // Move helpers
-    void update_rook_castling_rights(Square from, Color color);
-    void handle_pawn_move(Square from, Square to, Color color, Bitboard to_bb, PieceType promotion);
-    void handle_king_move(Square from, Square to, Color color);
-
+    void remove_piece(Square s);
+    void put_piece(Square s, Piece p);
+    void make_move(Square from, Square to);
+    void make_quiet_move(Square from, Square to);
+    int relative_dir(Direction dir);
 public:
     // Construction
     Board();
+
+    //The history of non-recoverable information
+    UndoInfo history[256];
 
     // Setup
     void setup();
     void setup_with_fen(std::string fen);
 
     // Game operations
-    void make_move(Move move);
+    void move(Move m);
+    void undo_move(Move m);
 
     // Accessors
     PieceType get_piece_type_on_square(Square s);
