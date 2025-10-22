@@ -60,9 +60,38 @@ consteval auto init_pawn_attacks() {
     return table;
 }
 
+consteval auto init_knight_attacks() {
+    std::array<Bitboard, 64> table = {};
+
+    const Bitboard not_a_file = 0xfefefefefefefefeULL;
+    const Bitboard not_ab_file = 0xfcfcfcfcfcfcfcfcULL;
+    const Bitboard not_h_file = 0x7f7f7f7f7f7f7f7fULL;
+    const Bitboard not_gh_file = 0x3f3f3f3f3f3f3f3fULL;
+
+    for (int square = 0; square < 64; square++) {
+        Bitboard bb = BitboardUtil::square_to_bitboard(static_cast<Square>(square));
+        Bitboard attacks = 0ULL;
+
+        // 8 possible knight jumps
+        attacks |= (bb << 17) & not_a_file;
+        attacks |= (bb << 15) & not_h_file;
+        attacks |= (bb << 10) & not_ab_file;
+        attacks |= (bb << 6)  & not_gh_file;
+        attacks |= (bb >> 17) & not_h_file;
+        attacks |= (bb >> 15) & not_a_file;
+        attacks |= (bb >> 10) & not_gh_file;
+        attacks |= (bb >> 6)  & not_ab_file;
+
+        table[square] = attacks;
+    }
+
+    return table;
+}
+
+
 constexpr auto PAWN_PUSHES = init_pawn_pushes_table();
 constexpr auto PAWN_ATTACKS = init_pawn_attacks();
-
+constexpr auto KNIGHT_ATTACKS = init_knight_attacks();
 
 
 // ============= Initialization Methods =============
@@ -89,7 +118,7 @@ Board::Board() {
     // Set default game state
     player_to_move = WHITE;
     castling_rights = {true, true, true, true};
-    half_move_clock = 0;
+    game_ply = 0;
     full_move_counter = 1;
     en_passant_target_square = NO_SQUARE;
 }
@@ -166,7 +195,7 @@ void Board::setup_with_fen(std::string fen) {
         NO_SQUARE : SquareMap.at(tokens[3]);
 
     // Parse move counters
-    half_move_clock = std::stoi(tokens[4]);
+    game_ply = std::stoi(tokens[4]);
     full_move_counter = std::stoi(tokens[5]);
 }
 
@@ -177,7 +206,7 @@ void Board::move(Move m) {
     const Square to = m.to();
     const MoveFlags type = m.flags();
 
-    ++game_ply;
+    game_ply++;
     history[game_ply] = UndoInfo(history[game_ply - 1]);
     history[game_ply].entry |= BitboardUtil::square_to_bitboard(to) | BitboardUtil::square_to_bitboard(from);
 
@@ -347,33 +376,25 @@ void Board::make_quiet_move(Square from, Square to) {
 }
 
 
+void Board::put_piece(Square s, Piece p) {
+    assert(mailbox[s].type == NO_PIECE_TYPE && "Square not empty");
+    Bitboard bb = BitboardUtil::square_to_bitboard(s);
+    bitboards[p.color][p.type] |= bb;
+    occupancy[p.color] |= bb;
+    occupancy[BOTH] |= bb;
+    mailbox[s] = p;
+}
+
 void Board::remove_piece(Square s) {
-    // there must be a piece on this square
-    assert(mailbox[s].type != NO_PIECE_TYPE && "Trying to remove a piece from an empty square.");
-    Bitboard square_bb = BitboardUtil::square_to_bitboard(s);
-    Color owner = get_piece_color_on_square(s);
-    PieceType type = get_piece_type_on_square(s);
-
-    bitboards[owner][type] ^= square_bb;
-    occupancy[owner] ^= square_bb;
-    occupancy[BOTH] ^= square_bb;
-
+    assert(mailbox[s].type != NO_PIECE_TYPE && "No piece to remove");
+    Piece p = mailbox[s];
+    Bitboard bb = BitboardUtil::square_to_bitboard(s);
+    bitboards[p.color][p.type] &= ~bb;
+    occupancy[p.color] &= ~bb;
+    occupancy[BOTH] &= ~bb;
     mailbox[s].type = NO_PIECE_TYPE;
 }
 
-void Board::put_piece(Square s, Piece p) {
-    // square must be empty
-    assert(mailbox[s].type == NO_PIECE_TYPE && "Trying to ad a piece to a non empty square.");
-    Bitboard square_bb = BitboardUtil::square_to_bitboard(s);
-    Color owner = p.color;
-    PieceType type = p.type;
-
-    bitboards[owner][type] ^= square_bb;
-    occupancy[owner] ^= square_bb;
-    occupancy[BOTH] ^= square_bb;
-
-    mailbox[s] = p;
-}
 
 int Board::relative_dir(Direction dir) {
     return player_to_move == WHITE ? dir : -dir;
