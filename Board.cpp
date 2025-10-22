@@ -88,10 +88,84 @@ consteval auto init_knight_attacks() {
     return table;
 }
 
+consteval auto init_bishop_masks() {
+    std::array<Bitboard, 64> masks = {};
+    for (int sq = 0; sq < 64; ++sq) {
+        Bitboard mask = 0ULL;
+        int rank = sq / 8;
+        int file = sq % 8;
+
+        // Diagonal directions: SE, SW, NE, NW
+        for (int r = rank + 1, f = file + 1; r < 8 && f < 8; ++r, ++f) {
+            mask |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f));
+        }
+        for (int r = rank + 1, f = file - 1; r < 8 && f >= 0; ++r, --f) {
+            mask |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f));
+        }
+        for (int r = rank - 1, f = file + 1; r >= 0 && f < 8; --r, ++f) {
+            mask |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f));
+        }
+        for (int r = rank - 1, f = file - 1; r >= 0 && f >= 0; --r, --f) {
+            mask |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f));
+        }
+        masks[sq] = mask;
+    }
+    return masks;
+}
+
+constexpr auto BISHOP_MASKS = init_bishop_masks();
+
+inline std::array<std::array<Bitboard, 512>, 64> init_bishop_attacks() {
+    std::array<std::array<Bitboard, 512>, 64> table = {};
+    for (int sq = 0; sq < 64; ++sq) {
+        Bitboard mask = BISHOP_MASKS[sq];
+        int num_bits = __builtin_popcountll(mask);
+        int num_occupancies = 1 << num_bits;
+
+        for (int occ_idx = 0; occ_idx < num_occupancies; ++occ_idx) {
+            Bitboard occ = 0ULL;
+            Bitboard attacks = 0ULL;
+
+            // Set occupancy bits
+            Bitboard temp_mask = mask;
+            for (int i = 0; i < num_bits; ++i) {
+                int lsb = __builtin_ctzll(temp_mask);
+                if (occ_idx & (1 << i)) {
+                    occ |= BitboardUtil::square_to_bitboard(static_cast<Square>(lsb));
+                }
+                temp_mask &= temp_mask - 1;  // Clear LSB
+            }
+
+            // Simulate bishop attacks with occupancy
+            int rank = sq / 8;
+            int file = sq % 8;
+            for (int r = rank + 1, f = file + 1; r < 8 && f < 8; ++r, ++f) {
+                attacks |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f));
+                if (occ & BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f))) break;
+            }
+            for (int r = rank + 1, f = file - 1; r < 8 && f >= 0; ++r, --f) {
+                attacks |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f));
+                if (occ & BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f))) break;
+            }
+            for (int r = rank - 1, f = file + 1; r >= 0 && f < 8; --r, ++f) {
+                attacks |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f));
+                if (occ & BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f))) break;
+            }
+            for (int r = rank - 1, f = file - 1; r >= 0 && f >= 0; --r, --f) {
+                attacks |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f));
+                if (occ & BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f))) break;
+            }
+            table[sq][occ_idx] = attacks;
+        }
+    }
+    return table;
+}
+
 
 constexpr auto PAWN_PUSHES = init_pawn_pushes_table();
 constexpr auto PAWN_ATTACKS = init_pawn_attacks();
 constexpr auto KNIGHT_ATTACKS = init_knight_attacks();
+std::array<std::array<Bitboard, 512>, 64> BISHOP_ATTACKS = init_bishop_attacks();
 
 
 // ============= Initialization Methods =============
@@ -125,9 +199,21 @@ Board::Board() {
 
 // ============= Setup Methods =============
 
+
+
 void Board::setup() {
     setup_with_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
+    // Example: Bishop on e4 (square 28) with a blocking piece on f5 (square 37)
+    Bitboard occupancy = BitboardUtil::square_to_bitboard(static_cast<Square>(37)); // f5
+    Bitboard attacks = get_attacks(static_cast<Square>(28), occupancy, BISHOP_MASKS, BISHOP_ATTACKS);
+
+    std::cout << "Bishop attacks for e4 with occupancy on f5:\n";
+    BitboardUtil::print_bitboard(attacks);
+
+    return 0;
 }
+
 
 void Board::setup_with_fen(std::string fen) {
     std::istringstream fen_stream(fen);
@@ -400,7 +486,29 @@ int Board::relative_dir(Direction dir) {
     return player_to_move == WHITE ? dir : -dir;
 }
 
+Bitboard Board::get_attacks_bb_for_sliding_piece(Square sq, const std::array<Bitboard, 64>& masks, const std::array<std::array<Bitboard, 512>, 64>& attacks) {
+    // todo: add method in header
+    // todo: just start with pseudo legal move generation and make this method useful
+    // todo: use result in pseudo legal move generation, go through each set bit and create Move, add to Move vector and return
+    // Calculate the occupancy index
+    Bitboard mask = masks[sq];
+    Bitboard relevant_blocking_squares = occupancy[BOTH] & mask;
+    int num_bits = __builtin_popcountll(mask);
+    int occ_idx = 0;
 
+    // Calculate the occupancy index
+    Bitboard temp_mask = mask;
+    for (int i = 0; i < num_bits; ++i) {
+        int lsb = __builtin_ctzll(temp_mask);
+        if (relevant_blocking_squares & (1ULL << lsb)) {
+            occ_idx |= (1 << i);
+        }
+        temp_mask &= temp_mask - 1;  // Clear LSB
+    }
+
+    // Return the attack bitboard, don't allow friendlies to be attacked
+    return attacks[sq][occ_idx] & ~occupancy[player_to_move];
+}
 
 
 
