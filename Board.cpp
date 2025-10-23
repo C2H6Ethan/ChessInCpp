@@ -409,13 +409,24 @@ void Board::move(Move m) {
             break;
         case ROOK:
             if (player_to_move == WHITE) {
-                if (from == a1) castling_rights.white_king_side = false;
-                if (from == h1) castling_rights.white_queen_side = false;
+                if (from == a1) castling_rights.white_queen_side = false;
+                if (from == h1) castling_rights.white_king_side = false;
             } else {
-                if (from == a8) castling_rights.black_king_side = false;
-                if (from == h8) castling_rights.black_queen_side = false;
+                if (from == a8) castling_rights.black_queen_side = false;
+                if (from == h8) castling_rights.black_king_side = false;
             }
             break;
+    }
+
+    auto to_piece_type = get_piece_type_on_square(to);
+    if (to_piece_type == ROOK) {
+        if (player_to_move == WHITE) {
+            if (to == a8) castling_rights.black_queen_side = false;
+            if (to == h8) castling_rights.black_king_side = false;
+        } else {
+            if (from == a1) castling_rights.white_queen_side = false;
+            if (from == h1) castling_rights.white_king_side = false;
+        }
     }
 
     switch (type) {
@@ -570,29 +581,32 @@ Move* Board::generate_pseudo_legal_moves(Move *list) {
     //todo: optmize by checking if is in check or checking pinned pieces
 
 
-    auto pawns = bitboards[player_to_move][PAWN];
-    while (pawns) {
-        list = generate_pawn_moves(list, pop_lsb(pawns));
-    }
+    // todo: remove
+    if (false) {
+        auto pawns = bitboards[player_to_move][PAWN];
+        while (pawns) {
+            list = generate_pawn_moves(list, pop_lsb(pawns));
+        }
 
-    auto knights = bitboards[player_to_move][KNIGHT];
-    while (knights) {
-        list = generate_knight_moves(list, pop_lsb(knights));
-    }
+        auto knights = bitboards[player_to_move][KNIGHT];
+        while (knights) {
+            list = generate_knight_moves(list, pop_lsb(knights));
+        }
 
-    auto bishops = bitboards[player_to_move][BISHOP];
-    while (bishops) {
-        list = generate_bishop_moves(list, pop_lsb(bishops));
-    }
+        auto bishops = bitboards[player_to_move][BISHOP];
+        while (bishops) {
+            list = generate_bishop_moves(list, pop_lsb(bishops));
+        }
 
-    auto rooks = bitboards[player_to_move][ROOK];
-    while (rooks) {
-        list = generate_rook_moves(list, pop_lsb(rooks));
-    }
+        auto rooks = bitboards[player_to_move][ROOK];
+        while (rooks) {
+            list = generate_rook_moves(list, pop_lsb(rooks));
+        }
 
-    auto queens = bitboards[player_to_move][QUEEN];
-    while (queens) {
-        list = generate_queen_moves(list, pop_lsb(queens));
+        auto queens = bitboards[player_to_move][QUEEN];
+        while (queens) {
+            list = generate_queen_moves(list, pop_lsb(queens));
+        }
     }
 
     auto king = bitboards[player_to_move][KING];
@@ -766,9 +780,20 @@ Move* Board::generate_king_moves(Move *list, Square from_square) {
     }
 
     // check castling moves
+    // todo: need to check if spaces in between are empty and not attacked by another piece
+    // todo: make is_square_attacked function and then use attack tables to check if there is a certain piece (for knight pattern, is a knight somewhere there)
     if (player_to_move == WHITE) {
         if (castling_rights.white_king_side) {
-            // todo: change castling rights when rook get's captured
+            *list++ = Move(e1, g1, OO);
+        }
+        if (castling_rights.white_queen_side) {
+            *list++ = Move(e1, c1, OOO);
+        }
+        if (castling_rights.black_king_side) {
+            *list++ = Move(e8, g8, OO);
+        }
+        if (castling_rights.black_queen_side) {
+            *list++ = Move(e8, c8, OOO);
         }
     }
 
