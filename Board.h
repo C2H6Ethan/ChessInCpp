@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
-#include <iostream>
 
 class Move;
 // ============= Basic Types =============
@@ -26,7 +25,7 @@ enum PieceType : uint8_t {
     PIECE_TYPE_COUNT, NO_PIECE_TYPE
 };
 
-enum Color : int {
+enum Color : uint8_t {
     WHITE, BLACK
 };
 
@@ -63,11 +62,12 @@ struct UndoInfo {
     Bitboard entry = 0;
     Piece captured = {NO_PIECE_TYPE, WHITE};
     Square epsq = NO_SQUARE;
+    CastlingRights castling_rights = {true, true, true, true};
 
     UndoInfo() = default;
 
     UndoInfo(const UndoInfo& prev)
-        : entry(prev.entry), captured(prev.captured), epsq(prev.epsq) {}
+        : entry(prev.entry), captured(prev.captured), epsq(prev.epsq), castling_rights(prev.castling_rights) {}
 };
 
 
@@ -84,9 +84,17 @@ private:
     Piece mailbox[64];          // 64 bytes
     Color player_to_move;       // 1 byte
     CastlingRights castling_rights; // 1 byte
-    Square en_passant_target_square; // 1 byte
     uint8_t game_ply;    // 1 byte
     uint16_t full_move_counter; // 2 bytes
+
+    // Move Generation
+    Move* generate_pawn_moves(Move *list, Square from_square);
+    Move* generate_knight_moves(Move *list, Square from_square);
+    Move* generate_bishop_moves(Move *list, Square from_square);
+    Move* generate_rook_moves(Move *list, Square from_square);
+    Move* generate_queen_moves(Move *list, Square from_square);
+    Move* generate_king_moves(Move *list, Square from_square);
+    int get_occupancy_index(Square from_square, const std::array<Bitboard, 64>& masks);
 
 
     // Move helpers
@@ -95,6 +103,7 @@ private:
     void make_move(Square from, Square to);
     void make_quiet_move(Square from, Square to);
     int relative_dir(Direction dir);
+    Square pop_lsb(Bitboard &bb);
 public:
     // Construction
     Board();
@@ -109,6 +118,9 @@ public:
     // Game operations
     void move(Move m);
     void undo_move(Move m);
+
+    // Move generation
+    Move* generate_pseudo_legal_moves(Move *list);
 
     // Accessors
     PieceType get_piece_type_on_square(Square s);

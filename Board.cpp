@@ -19,21 +19,19 @@ namespace {
 // Precompute attack/move tables
 consteval auto init_pawn_pushes_table() {
     std::array<std::array<Bitboard, 64>, 2> table = {};
-    constexpr Bitboard FileA = 0x0101010101010101ULL;
-    constexpr Bitboard FileH = 0x8080808080808080ULL;
 
     for (int sq = 0; sq < 64; ++sq) {
         const Bitboard bb = 1ULL << sq;
 
         // White pawn pushes
         table[WHITE][sq] = (bb << 8); // Single push
-        if (bb & 0xFF00ULL) { // If on 2nd rank (no need for Rank2 constant)
+        if (bb & 0xFF00ULL) { // 2nd rank
             table[WHITE][sq] |= (bb << 16); // Add double push
         }
 
         // Black pawn pushes
         table[BLACK][sq] = (bb >> 8); // Single push
-        if (bb & 0xFF000000000000ULL) { // If on 7th rank
+        if (bb & 0xFF000000000000ULL) { // 7th rank
             table[BLACK][sq] |= (bb >> 16); // Add double push
         }
     }
@@ -161,11 +159,122 @@ inline std::array<std::array<Bitboard, 512>, 64> init_bishop_attacks() {
     return table;
 }
 
+consteval auto init_rook_masks() {
+    std::array<Bitboard, 64> masks = {};
+    for (int sq = 0; sq < 64; ++sq) {
+        Bitboard mask = 0ULL;
+        int rank = sq / 8;
+        int file = sq % 8;
+
+        // North
+        for (int r = rank + 1; r < 7; ++r)
+            mask |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + file));
+
+        // South
+        for (int r = rank - 1; r > 0; --r)
+            mask |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + file));
+
+        // East
+        for (int f = file + 1; f < 7; ++f)
+            mask |= BitboardUtil::square_to_bitboard(static_cast<Square>(rank * 8 + f));
+
+        // West
+        for (int f = file - 1; f > 0; --f)
+            mask |= BitboardUtil::square_to_bitboard(static_cast<Square>(rank * 8 + f));
+
+        masks[sq] = mask;
+    }
+    return masks;
+}
+
+
+constexpr auto ROOK_MASKS = init_rook_masks();
+
+inline std::array<std::array<Bitboard, 4096>, 64> init_rook_attacks() {
+    std::array<std::array<Bitboard, 4096>, 64> table = {};
+    for (int sq = 0; sq < 64; ++sq) {
+        Bitboard mask = ROOK_MASKS[sq];
+        int num_bits = __builtin_popcountll(mask);
+        int num_occupancies = 1 << num_bits;
+
+        for (int occ_idx = 0; occ_idx < num_occupancies; ++occ_idx) {
+            Bitboard occ = 0ULL;
+            Bitboard attacks = 0ULL;
+
+            // Set occupancy bits
+            Bitboard temp_mask = mask;
+            for (int i = 0; i < num_bits; ++i) {
+                int lsb = __builtin_ctzll(temp_mask);
+                if (occ_idx & (1 << i)) {
+                    occ |= BitboardUtil::square_to_bitboard(static_cast<Square>(lsb));
+                }
+                temp_mask &= temp_mask - 1;  // Clear LSB
+            }
+
+            // Simulate rook attacks with occupancy
+            int rank = sq / 8;
+            int file = sq % 8;
+
+            for (int r = rank + 1; r < 8; ++r) {
+                attacks |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + file));
+                if (occ & BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + file))) break;
+            }
+            for (int r = rank - 1; r < 8;++r) {
+                attacks |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + file));
+                if (occ & BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + file))) break;
+            }
+            for (int f = file + 1; f < 8; ++f) {
+                attacks |= BitboardUtil::square_to_bitboard(static_cast<Square>(rank * 8 + f));
+                if (occ & BitboardUtil::square_to_bitboard(static_cast<Square>(rank * 8 + f))) break;
+            }
+            for (int f = file - 1; f >= 0; --f) {
+                attacks |= BitboardUtil::square_to_bitboard(static_cast<Square>(rank * 8 + f));
+                if (occ & BitboardUtil::square_to_bitboard(static_cast<Square>(rank * 8 + f))) break;
+            }
+
+            table[sq][occ_idx] = attacks;
+        }
+    }
+    return table;
+}
+
+consteval auto init_king_attacks() {
+    std::array<Bitboard, 64> table = {};
+
+    const Bitboard not_a_file = 0xfefefefefefefefeULL;
+    const Bitboard not_h_file = 0x7f7f7f7f7f7f7f7fULL;
+
+    const Bitboard not_first_rank = ~0xFFULL;
+    const Bitboard not_last_rank = ~0xFF00000000000000ULL;
+
+    for (int square = 0; square < 64; square++) {
+        Bitboard bb = BitboardUtil::square_to_bitboard(static_cast<Square>(square));
+        Bitboard attacks = 0ULL;
+
+        // 8 possible king moves
+        attacks |= (bb << 9) & not_a_file & not_first_rank; // up-right
+        attacks |= (bb << 8) & not_first_rank; // up
+        attacks |= (bb << 7) & not_h_file & not_first_rank; //up-left
+
+        attacks |= (bb << 1) & not_a_file; // left
+        attacks |= (bb >> 1) & not_h_file; // right
+
+        attacks |= (bb >> 7) & not_a_file & not_last_rank; // down-right
+        attacks |= (bb >> 8) & not_last_rank; // down
+        attacks |= (bb >> 9) & not_h_file & not_last_rank ; // down-left
+
+        table[square] = attacks;
+    }
+
+    return table;
+}
 
 constexpr auto PAWN_PUSHES = init_pawn_pushes_table();
 constexpr auto PAWN_ATTACKS = init_pawn_attacks();
 constexpr auto KNIGHT_ATTACKS = init_knight_attacks();
 std::array<std::array<Bitboard, 512>, 64> BISHOP_ATTACKS = init_bishop_attacks();
+std::array<std::array<Bitboard, 4096>, 64> ROOK_ATTACKS = init_rook_attacks();
+constexpr auto KING_ATTACKS = init_king_attacks();
 
 
 // ============= Initialization Methods =============
@@ -194,7 +303,6 @@ Board::Board() {
     castling_rights = {true, true, true, true};
     game_ply = 0;
     full_move_counter = 1;
-    en_passant_target_square = NO_SQUARE;
 }
 
 // ============= Setup Methods =============
@@ -203,15 +311,6 @@ Board::Board() {
 
 void Board::setup() {
     setup_with_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-
-    // Example: Bishop on e4 (square 28) with a blocking piece on f5 (square 37)
-    Bitboard occupancy = BitboardUtil::square_to_bitboard(static_cast<Square>(37)); // f5
-    Bitboard attacks = get_attacks(static_cast<Square>(28), occupancy, BISHOP_MASKS, BISHOP_ATTACKS);
-
-    std::cout << "Bishop attacks for e4 with occupancy on f5:\n";
-    BitboardUtil::print_bitboard(attacks);
-
-    return 0;
 }
 
 
@@ -276,13 +375,14 @@ void Board::setup_with_fen(std::string fen) {
         else if (c == 'q') castling_rights.black_queen_side = true;
     }
 
-    // Parse en passant
-    en_passant_target_square = (tokens[3] == "-") ?
-        NO_SQUARE : SquareMap.at(tokens[3]);
 
     // Parse move counters
     game_ply = std::stoi(tokens[4]);
     full_move_counter = std::stoi(tokens[5]);
+
+    // Parse en passant
+    history[game_ply - 1].epsq = (tokens[3] == "-") ?
+        NO_SQUARE : SquareMap.at(tokens[3]);
 }
 
 // ============= Move Execution =============
@@ -295,6 +395,28 @@ void Board::move(Move m) {
     game_ply++;
     history[game_ply] = UndoInfo(history[game_ply - 1]);
     history[game_ply].entry |= BitboardUtil::square_to_bitboard(to) | BitboardUtil::square_to_bitboard(from);
+
+    auto piece_type = get_piece_type_on_square(from);
+    switch (piece_type) {
+        case KING:
+            if (player_to_move == WHITE) {
+                castling_rights.white_king_side = false;
+                castling_rights.white_queen_side = false;
+            } else {
+                castling_rights.black_king_side = false;
+                castling_rights.black_queen_side = false;
+            }
+            break;
+        case ROOK:
+            if (player_to_move == WHITE) {
+                if (from == a1) castling_rights.white_king_side = false;
+                if (from == h1) castling_rights.white_queen_side = false;
+            } else {
+                if (from == a8) castling_rights.black_king_side = false;
+                if (from == h8) castling_rights.black_queen_side = false;
+            }
+            break;
+    }
 
     switch (type) {
         case QUIET:
@@ -376,6 +498,7 @@ void Board::move(Move m) {
             break;
     }
 
+    history[game_ply].castling_rights = castling_rights;
     player_to_move = static_cast<Color>(!static_cast<bool>(player_to_move));
 }
 
@@ -435,8 +558,244 @@ void Board::undo_move(Move m) {
             break;
     }
 
+    castling_rights = history[game_ply].castling_rights;
     game_ply--;
 }
+
+// ============= Move Generation =============
+
+Move* Board::generate_pseudo_legal_moves(Move *list) {
+    // generates all possible moves, does not check for checks
+
+    //todo: optmize by checking if is in check or checking pinned pieces
+
+
+    auto pawns = bitboards[player_to_move][PAWN];
+    while (pawns) {
+        list = generate_pawn_moves(list, pop_lsb(pawns));
+    }
+
+    auto knights = bitboards[player_to_move][KNIGHT];
+    while (knights) {
+        list = generate_knight_moves(list, pop_lsb(knights));
+    }
+
+    auto bishops = bitboards[player_to_move][BISHOP];
+    while (bishops) {
+        list = generate_bishop_moves(list, pop_lsb(bishops));
+    }
+
+    auto rooks = bitboards[player_to_move][ROOK];
+    while (rooks) {
+        list = generate_rook_moves(list, pop_lsb(rooks));
+    }
+
+    auto queens = bitboards[player_to_move][QUEEN];
+    while (queens) {
+        list = generate_queen_moves(list, pop_lsb(queens));
+    }
+
+    auto king = bitboards[player_to_move][KING];
+    auto king_sq = BitboardUtil::bitboard_to_square(king); // should never be more than one king per color
+    list = generate_king_moves(list, king_sq);
+
+    return list;
+}
+
+Move* Board::generate_pawn_moves(Move *list, const Square from_square) {
+    auto const pushes_bb = PAWN_PUSHES[player_to_move][from_square];
+    auto attacks_bb = PAWN_ATTACKS[player_to_move][from_square];
+    auto const enemy = player_to_move == WHITE ? BLACK : WHITE;
+
+    const Bitboard from_bb = BitboardUtil::square_to_bitboard(from_square);
+    Bitboard const rank2 = 0x000000000000FF00ULL;
+    Bitboard const rank7 = 0x00FF000000000000ULL;
+
+    Direction dir;
+    if (player_to_move == WHITE) {
+        dir = NORTH;
+    } else {
+        dir = SOUTH;
+    }
+
+    if ((player_to_move == WHITE && from_bb & rank2) || (player_to_move == BLACK && from_bb & rank7)) {
+
+        auto const first_square = static_cast<Square>(from_square + relative_dir(dir));
+        auto const second_square = static_cast<Square>(first_square + relative_dir(dir));
+
+        if (!(BitboardUtil::square_to_bitboard(first_square) & occupancy[enemy])) {
+            // no enemy on first square, add quiet move
+            *list++ = Move(from_square, first_square, QUIET);
+
+            if (!(BitboardUtil::square_to_bitboard(second_square) & occupancy[enemy])) {
+                // no enemy on second square, add double push
+                *list++ = Move(from_square, second_square, DOUBLE_PUSH);
+            }
+        }
+    } else if ((player_to_move == WHITE && from_bb & rank7) || (player_to_move == BLACK && from_bb & rank2)) {
+        // pawn is about to promote
+        *list++ = Move(from_square, static_cast<Square>(from_square + relative_dir(dir)), PR_KNIGHT);
+        *list++ = Move(from_square, static_cast<Square>(from_square + relative_dir(dir)), PR_BISHOP);
+        *list++ = Move(from_square, static_cast<Square>(from_square + relative_dir(dir)), PR_ROOK);
+        *list++ = Move(from_square, static_cast<Square>(from_square + relative_dir(dir)), PR_QUEEN);
+    }
+    else {
+        // only single pushes possible
+        if (!(pushes_bb & occupancy[enemy])) {
+            *list++ = Move(from_square, BitboardUtil::bitboard_to_square(pushes_bb), QUIET);
+        }
+    }
+
+    // attacks
+    if ((player_to_move == WHITE && from_bb & rank7) || (player_to_move == BLACK && from_bb & rank2)) {
+        // promotion captures
+        while (attacks_bb) {
+            auto to_square = pop_lsb(attacks_bb);
+            if (BitboardUtil::square_to_bitboard(to_square) & occupancy[enemy]) {
+                // enemy is on target square, capture move
+                *list++ = Move(from_square, to_square, PC_KNIGHT);
+                *list++ = Move(from_square, to_square, PC_BISHOP);
+                *list++ = Move(from_square, to_square, PC_ROOK);
+                *list++ = Move(from_square, to_square, PC_QUEEN);
+            }
+        }
+    } else {
+        // normal captures
+        while (attacks_bb) {
+            auto to_square = pop_lsb(attacks_bb);
+            if (BitboardUtil::square_to_bitboard(to_square) & occupancy[enemy]) {
+                // enemy is on target square, capture move
+                *list++ = Move(from_square, to_square, CAPTURE);
+            } else if (BitboardUtil::square_to_bitboard(to_square) & BitboardUtil::square_to_bitboard(history[game_ply].epsq)) {
+                // en passant
+                *list++ = Move(from_square, to_square, EN_PASSANT);
+            }
+        }
+    }
+
+    return list;
+}
+
+Move* Board::generate_knight_moves(Move *list, const Square from_square) {
+    auto attacks = KNIGHT_ATTACKS[from_square];
+    attacks &= ~occupancy[player_to_move]; // remove bits with friendlies on them
+    const auto enemy = player_to_move == WHITE ? BLACK : WHITE;
+
+    while (attacks) {
+        auto to_square = pop_lsb(attacks);
+        if (BitboardUtil::square_to_bitboard(to_square) & occupancy[enemy]) {
+            *list++ = Move(from_square, to_square, CAPTURE);
+        } else {
+            *list++ = Move(from_square, to_square, QUIET);
+        }
+    }
+
+    return list;
+}
+
+Move* Board::generate_bishop_moves(Move *list, const Square from_square) {
+    auto occ_idx = get_occupancy_index(from_square, BISHOP_MASKS);
+    auto attacks = BISHOP_ATTACKS[from_square][occ_idx] & ~occupancy[player_to_move];
+
+    const auto enemy = player_to_move == WHITE ? BLACK : WHITE;
+
+    while (attacks) {
+        auto to_square = pop_lsb(attacks);
+        if (BitboardUtil::square_to_bitboard(to_square) & occupancy[enemy]) {
+            *list++ = Move(from_square, to_square, CAPTURE);
+        } else {
+            *list++ = Move(from_square, to_square, QUIET);
+        }
+    }
+
+    return list;
+}
+
+Move* Board::generate_rook_moves(Move *list, const Square from_square) {
+    auto occ_idx = get_occupancy_index(from_square, ROOK_MASKS);
+    auto attacks = ROOK_ATTACKS[from_square][occ_idx] & ~occupancy[player_to_move];
+
+    const auto enemy = player_to_move == WHITE ? BLACK : WHITE;
+
+    while (attacks) {
+        auto to_square = pop_lsb(attacks);
+        if (BitboardUtil::square_to_bitboard(to_square) & occupancy[enemy]) {
+            *list++ = Move(from_square, to_square, CAPTURE);
+        } else {
+            *list++ = Move(from_square, to_square, QUIET);
+        }
+    }
+
+    return list;
+}
+
+Move* Board::generate_queen_moves(Move *list, const Square from_square) {
+    auto bishop_occ_idx = get_occupancy_index(from_square, BISHOP_MASKS);
+    auto bishop_attacks = BISHOP_ATTACKS[from_square][bishop_occ_idx];
+
+    auto rook_occ_idx = get_occupancy_index(from_square, ROOK_MASKS);
+    auto rook_attacks = ROOK_ATTACKS[from_square][rook_occ_idx];
+
+    auto attacks = (bishop_attacks | rook_attacks) & ~occupancy[player_to_move];
+    const auto enemy = player_to_move == WHITE ? BLACK : WHITE;
+
+    while (attacks) {
+        auto to_square = pop_lsb(attacks);
+        if (BitboardUtil::square_to_bitboard(to_square) & occupancy[enemy]) {
+            *list++ = Move(from_square, to_square, CAPTURE);
+        } else {
+            *list++ = Move(from_square, to_square, QUIET);
+        }
+    }
+
+    return list;
+}
+
+Move* Board::generate_king_moves(Move *list, Square from_square) {
+    auto attacks = KING_ATTACKS[from_square];
+    attacks &= ~occupancy[player_to_move]; // remove bits with friendlies on them
+    const auto enemy = player_to_move == WHITE ? BLACK : WHITE;
+
+    while (attacks) {
+        auto to_square = pop_lsb(attacks);
+        if (BitboardUtil::square_to_bitboard(to_square) & occupancy[enemy]) {
+            *list++ = Move(from_square, to_square, CAPTURE);
+        } else {
+            *list++ = Move(from_square, to_square, QUIET);
+        }
+    }
+
+    // check castling moves
+    if (player_to_move == WHITE) {
+        if (castling_rights.white_king_side) {
+            // todo: change castling rights when rook get's captured
+        }
+    }
+
+    return list;
+}
+
+
+int Board::get_occupancy_index(Square from_square, const std::array<Bitboard, 64>& masks) {
+    // Calculate the occupancy index
+    Bitboard mask = masks[from_square];
+    Bitboard relevant_blocking_squares = occupancy[BOTH] & mask;
+    int num_bits = __builtin_popcountll(mask);
+    int occ_idx = 0;
+
+    // Calculate the occupancy index
+    Bitboard temp_mask = mask;
+    for (int i = 0; i < num_bits; ++i) {
+        int lsb = __builtin_ctzll(temp_mask);
+        if (relevant_blocking_squares & (1ULL << lsb)) {
+            occ_idx |= (1 << i);
+        }
+        temp_mask &= temp_mask - 1;  // Clear LSB
+    }
+
+    return occ_idx;
+}
+
 
 
 // ============= Helper Methods =============
@@ -486,30 +845,13 @@ int Board::relative_dir(Direction dir) {
     return player_to_move == WHITE ? dir : -dir;
 }
 
-Bitboard Board::get_attacks_bb_for_sliding_piece(Square sq, const std::array<Bitboard, 64>& masks, const std::array<std::array<Bitboard, 512>, 64>& attacks) {
-    // todo: add method in header
-    // todo: just start with pseudo legal move generation and make this method useful
-    // todo: use result in pseudo legal move generation, go through each set bit and create Move, add to Move vector and return
-    // Calculate the occupancy index
-    Bitboard mask = masks[sq];
-    Bitboard relevant_blocking_squares = occupancy[BOTH] & mask;
-    int num_bits = __builtin_popcountll(mask);
-    int occ_idx = 0;
-
-    // Calculate the occupancy index
-    Bitboard temp_mask = mask;
-    for (int i = 0; i < num_bits; ++i) {
-        int lsb = __builtin_ctzll(temp_mask);
-        if (relevant_blocking_squares & (1ULL << lsb)) {
-            occ_idx |= (1 << i);
-        }
-        temp_mask &= temp_mask - 1;  // Clear LSB
-    }
-
-    // Return the attack bitboard, don't allow friendlies to be attacked
-    return attacks[sq][occ_idx] & ~occupancy[player_to_move];
+Square Board::pop_lsb(Bitboard &bb) {
+    int lsb = __builtin_ctzll(bb);
+    Square lsb_square = static_cast<Square>(lsb);
+    Bitboard lsb_bb = BitboardUtil::square_to_bitboard(lsb_square);
+    bb ^= lsb_bb;
+    return lsb_square;
 }
-
 
 
 // ============= Display Methods =============
