@@ -3,11 +3,6 @@
 #include "Board.h"
 #include "Move.h"
 
-#include <iostream>
-#include <chrono>
-#include "Board.h"
-#include "Move.h"
-
 uint64_t perft(Board& board, int depth) {
     if (depth == 0) return 1ULL;
 
@@ -25,10 +20,7 @@ uint64_t perft(Board& board, int depth) {
 }
 
 
-void start_perft(int depth) {
-    Board board;
-    board.setup();
-
+void start_perft(int depth, Board &board) {
     std::cout << "Running perft(" << depth << ")...\n";
 
     auto start = std::chrono::high_resolution_clock::now();
@@ -42,7 +34,9 @@ void start_perft(int depth) {
 }
 
 int main() {
-    start_perft(5);
+    Board board;
+    board.setup();
+    start_perft(5, board);
 
 
     return 0;

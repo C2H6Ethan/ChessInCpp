@@ -951,12 +951,6 @@ void Board::make_quiet_move(Square from, Square to) {
 
 
 void Board::put_piece(Square s, Piece p) {
-    if (mailbox[s].type != NO_PIECE_TYPE) {
-        print();
-        BitboardUtil::print_bitboard(history[1].entry);
-        BitboardUtil::print_bitboard(history[2].entry);
-        BitboardUtil::print_bitboard(history[3].entry);
-    }
     assert(mailbox[s].type == NO_PIECE_TYPE && "Square not empty");
     Bitboard bb = BitboardUtil::square_to_bitboard(s);
     bitboards[p.color][p.type] |= bb;
