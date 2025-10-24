@@ -94,16 +94,17 @@ consteval auto init_bishop_masks() {
         int file = sq % 8;
 
         // Diagonal directions: SE, SW, NE, NW
-        for (int r = rank + 1, f = file + 1; r < 8 && f < 8; ++r, ++f) {
+        // stop before the board edges (i.e. r < 7/f < 7 and r > 0/f > 0)
+        for (int r = rank + 1, f = file + 1; r < 7 && f < 7; ++r, ++f) {
             mask |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f));
         }
-        for (int r = rank + 1, f = file - 1; r < 8 && f >= 0; ++r, --f) {
+        for (int r = rank + 1, f = file - 1; r < 7 && f > 0; ++r, --f) {
             mask |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f));
         }
-        for (int r = rank - 1, f = file + 1; r >= 0 && f < 8; --r, ++f) {
+        for (int r = rank - 1, f = file + 1; r > 0 && f < 7; --r, ++f) {
             mask |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f));
         }
-        for (int r = rank - 1, f = file - 1; r >= 0 && f >= 0; --r, --f) {
+        for (int r = rank - 1, f = file - 1; r > 0 && f > 0; --r, --f) {
             mask |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + f));
         }
         masks[sq] = mask;
@@ -219,7 +220,7 @@ inline std::array<std::array<Bitboard, 4096>, 64> init_rook_attacks() {
                 attacks |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + file));
                 if (occ & BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + file))) break;
             }
-            for (int r = rank - 1; r < 8;++r) {
+            for (int r = rank - 1; r >= 0; --r) {
                 attacks |= BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + file));
                 if (occ & BitboardUtil::square_to_bitboard(static_cast<Square>(r * 8 + file))) break;
             }
