@@ -94,6 +94,7 @@ private:
     Move* generate_rook_moves(Move *list, Square from_square);
     Move* generate_queen_moves(Move *list, Square from_square);
     Move* generate_king_moves(Move *list, Square from_square);
+
     int get_occupancy_index(Square from_square, const std::array<Bitboard, 64>& masks);
 
 
@@ -121,6 +122,8 @@ public:
 
     // Move generation
     Move* generate_pseudo_legal_moves(Move *list);
+
+    bool is_square_under_attack(Square square, Color player_under_attack); // todo: put in private after testing
 
     // Accessors
     PieceType get_piece_type_on_square(Square s);
