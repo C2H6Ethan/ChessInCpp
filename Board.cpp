@@ -822,6 +822,37 @@ int Board::get_occupancy_index(Square from_square, const std::array<Bitboard, 64
     return occ_idx;
 }
 
+bool Board::is_square_under_attack(Square square, Color player_under_attack) {
+    Color attacker = player_under_attack == WHITE ? BLACK : WHITE;
+
+    // pawns
+    auto pawn_attacks = PAWN_ATTACKS[player_under_attack][square];
+    while (pawn_attacks) {
+        auto possible_pawn_bb = BitboardUtil::square_to_bitboard(pop_lsb(pawn_attacks));
+        if (possible_pawn_bb & bitboards[attacker][PAWN]) return true;
+    }
+
+    // knights
+    auto knight_attacks = KNIGHT_ATTACKS[square];
+    while (knight_attacks) {
+        auto possible_knight_bb = BitboardUtil::square_to_bitboard(pop_lsb(knight_attacks));
+        if (possible_knight_bb & bitboards[attacker][KNIGHT]) return true;
+    }
+
+    // sliding pieces
+    auto bishop_mask = BISHOP_MASKS[square];
+
+    BitboardUtil::print_bitboard(bishop_mask);
+
+    auto bishop_occ_idx = get_occupancy_index(square, BISHOP_MASKS);
+    auto bishop_attacks = BISHOP_ATTACKS[square][bishop_occ_idx];
+    BitboardUtil::print_bitboard(bishop_attacks);
+
+
+    return false;
+}
+
+
 
 
 // ============= Helper Methods =============

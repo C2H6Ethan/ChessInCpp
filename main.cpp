@@ -6,14 +6,8 @@
 
 int main() {
     Board board;
-    board.setup_with_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQK2R w KQkq - 0 1");
-    board.move(Move(h1, g1, QUIET));
-    board.move(Move(h7, h6, QUIET));
-    board.move(Move(g1, h1, QUIET));
-    board.undo_move(Move(g1, h1, QUIET));
-    board.undo_move(Move(h7, h6, QUIET));
-    board.undo_move(Move(h1, g1, QUIET));
-    board.print();
+    board.setup_with_fen("rnbqkb1r/pppppppp/5n2/8/8/8/PPP1PPPP/RNBQKBNR w KQkq - 0 1");
+
     Move moveList[256];  // preallocated move buffer
 
     // --- Timing starts here ---
@@ -32,6 +26,11 @@ int main() {
 
     std::cout << "Generated " << moveCount << " pseudo-legal moves in "
               << duration.count() << " microseconds.\n";
+
+
+
+    if (board.is_square_under_attack(d4, BLACK)) std::cout << "under attack";
+
 
     return 0;
 }
