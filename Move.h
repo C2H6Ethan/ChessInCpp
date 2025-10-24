@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Board.h"
+#include <string>
 
 //The type of the move
 enum MoveFlags : int {
@@ -51,4 +52,39 @@ public:
     void operator=(Move m) { move = m.move; }
     bool operator==(Move a) const { return to_from() == a.to_from(); }
     bool operator!=(Move a) const { return to_from() != a.to_from(); }
+
+    inline std::string to_uci() const {
+        auto square_to_str = [](Square sq) -> std::string {
+            char file = 'a' + (sq % 8);
+            char rank = '1' + (sq / 8);
+            return std::string{ file, rank };
+        };
+
+        std::string uci = square_to_str(from()) + square_to_str(to());
+
+        // Handle promotion moves
+        switch (flags()) {
+            case PR_QUEEN:
+            case PC_QUEEN:
+                uci += 'q';
+            break;
+            case PR_ROOK:
+            case PC_ROOK:
+                uci += 'r';
+            break;
+            case PR_BISHOP:
+            case PC_BISHOP:
+                uci += 'b';
+            break;
+            case PR_KNIGHT:
+            case PC_KNIGHT:
+                uci += 'n';
+            break;
+            default:
+                break; // normal move, no promotion suffix
+        }
+
+        return uci;
+    }
 };
+

@@ -67,7 +67,7 @@ struct UndoInfo {
     UndoInfo() = default;
 
     UndoInfo(const UndoInfo& prev)
-        : entry(prev.entry), captured(prev.captured), epsq(prev.epsq), castling_rights(prev.castling_rights) {}
+        : entry(prev.entry) {}
 };
 
 
@@ -81,13 +81,14 @@ private:
     Bitboard occupancy[3];
 
     // Game state
-    Piece mailbox[64];          // 64 bytes
-    Color player_to_move;       // 1 byte
-    CastlingRights castling_rights; // 1 byte
-    uint8_t game_ply;    // 1 byte
-    uint16_t full_move_counter; // 2 bytes
+    Piece mailbox[64];
+    Color player_to_move;
+    CastlingRights castling_rights;
+    int game_ply;
+    uint16_t full_move_counter;
 
     // Move Generation
+    Move* generate_pseudo_legal_moves(Move *list);
     Move* generate_pawn_moves(Move *list, Square from_square);
     Move* generate_knight_moves(Move *list, Square from_square);
     Move* generate_bishop_moves(Move *list, Square from_square);
@@ -96,6 +97,8 @@ private:
     Move* generate_king_moves(Move *list, Square from_square);
 
     int get_occupancy_index(Square from_square, const std::array<Bitboard, 64>& masks);
+    bool is_square_under_attack(Square square, Color player_under_attack);
+    bool is_in_check(Color player);
 
 
     // Move helpers
@@ -121,9 +124,7 @@ public:
     void undo_move(Move m);
 
     // Move generation
-    Move* generate_pseudo_legal_moves(Move *list);
-
-    bool is_square_under_attack(Square square, Color player_under_attack); // todo: put in private after testing
+    Move* generate_legal_moves(Move *list);
 
     // Accessors
     PieceType get_piece_type_on_square(Square s);
