@@ -571,8 +571,8 @@ void Board::undo_move(Move m) {
             break;
     }
 
-    castling_rights = history[game_ply].castling_rights;
     game_ply--;
+    castling_rights = history[game_ply].castling_rights;
 }
 
 // ============= Move Generation =============
@@ -668,7 +668,7 @@ Move *Board::generate_pawn_moves(Move *list, const Square from_square) {
         *list++ = Move(from_square, static_cast<Square>(from_square + dir), PR_QUEEN);
     } else {
         // only single pushes possible
-        if (!(pushes_bb & occupancy[enemy])) {
+        if (!(pushes_bb & occupancy[BOTH])) {
             *list++ = Move(from_square, BitboardUtil::bitboard_to_square(pushes_bb), QUIET);
         }
     }
@@ -951,6 +951,13 @@ void Board::make_quiet_move(Square from, Square to) {
 
 
 void Board::put_piece(Square s, Piece p) {
+    if (mailbox[s].type != NO_PIECE_TYPE ) {
+        for (int i = 1; i < game_ply; i++) {
+            BitboardUtil::print_bitboard(history[i].entry);
+            if (history[i].captured.type != NO_PIECE_TYPE) std::cout << "capture" << '\n';
+        }
+        int tmp = 5;
+    }
     assert(mailbox[s].type == NO_PIECE_TYPE && "Square not empty");
     Bitboard bb = BitboardUtil::square_to_bitboard(s);
     bitboards[p.color][p.type] |= bb;
@@ -1013,6 +1020,3 @@ PieceType Board::get_piece_type_on_square(Square s) {
 Color Board::get_piece_color_on_square(Square s) {
     return mailbox[s].color;
 }
-
-
-
