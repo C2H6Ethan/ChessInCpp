@@ -7,10 +7,10 @@ uint64_t perft(Board& board, int depth) {
     if (depth == 0) return 1ULL;
 
     Move moves[256];
-    Move* end = board.generate_legal_moves(moves);
+    Move *end = board.generate_legal_moves(moves);
     uint64_t nodes = 0;
 
-    for (Move* m = moves; m < end; ++m) {
+    for (Move *m = moves; m < end; ++m) {
         board.move(*m);
         nodes += perft(board, depth - 1);
         board.undo_move(*m);
@@ -35,7 +35,7 @@ void start_perft(int depth, Board &board) {
 
 int main() {
     Board board;
-    board.setup_with_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+    board.setup_with_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8");
     start_perft(4, board);
 
 

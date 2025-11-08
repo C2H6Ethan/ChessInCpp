@@ -662,10 +662,12 @@ Move *Board::generate_pawn_moves(Move *list, const Square from_square) {
         }
     } else if ((player_to_move == WHITE && from_bb & rank7) || (player_to_move == BLACK && from_bb & rank2)) {
         // pawn is about to promote
-        *list++ = Move(from_square, static_cast<Square>(from_square + dir), PR_KNIGHT);
-        *list++ = Move(from_square, static_cast<Square>(from_square + dir), PR_BISHOP);
-        *list++ = Move(from_square, static_cast<Square>(from_square + dir), PR_ROOK);
-        *list++ = Move(from_square, static_cast<Square>(from_square + dir), PR_QUEEN);
+        if (!(pushes_bb & occupancy[BOTH])) {
+            *list++ = Move(from_square, static_cast<Square>(from_square + dir), PR_KNIGHT);
+            *list++ = Move(from_square, static_cast<Square>(from_square + dir), PR_BISHOP);
+            *list++ = Move(from_square, static_cast<Square>(from_square + dir), PR_ROOK);
+            *list++ = Move(from_square, static_cast<Square>(from_square + dir), PR_QUEEN);
+        }
     } else {
         // only single pushes possible
         if (!(pushes_bb & occupancy[BOTH])) {
