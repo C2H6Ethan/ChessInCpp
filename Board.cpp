@@ -424,8 +424,8 @@ void Board::move(Move m) {
             if (to == a8) castling_rights.black_queen_side = false;
             if (to == h8) castling_rights.black_king_side = false;
         } else {
-            if (from == a1) castling_rights.white_queen_side = false;
-            if (from == h1) castling_rights.white_king_side = false;
+            if (to == a1) castling_rights.white_queen_side = false;
+            if (to == h1) castling_rights.white_king_side = false;
         }
     }
 
