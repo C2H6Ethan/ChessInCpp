@@ -869,18 +869,13 @@ bool Board::is_square_under_attack(Square square, Color player_under_attack) {
     Color attacker = player_under_attack == WHITE ? BLACK : WHITE;
 
     // pawns
-    auto pawn_attacks = PAWN_ATTACKS[player_under_attack][square];
-    while (pawn_attacks) {
-        auto possible_pawn_bb = BitboardUtil::square_to_bitboard(pop_lsb(pawn_attacks));
-        if (possible_pawn_bb & bitboards[attacker][PAWN]) return true;
-    }
+    if (PAWN_ATTACKS[player_under_attack][square] & bitboards[attacker][PAWN]) return true;
 
     // knights
-    auto knight_attacks = KNIGHT_ATTACKS[square];
-    while (knight_attacks) {
-        auto possible_knight_bb = BitboardUtil::square_to_bitboard(pop_lsb(knight_attacks));
-        if (possible_knight_bb & bitboards[attacker][KNIGHT]) return true;
-    }
+    if (KNIGHT_ATTACKS[square] & bitboards[attacker][KNIGHT]) return true;
+
+    // king
+    if (KING_ATTACKS[square] & bitboards[attacker][KING]) return true;
 
     // sliding pieces
     auto bishop_occ_idx = get_occupancy_index(square, BISHOP_MASKS);
@@ -893,29 +888,14 @@ bool Board::is_square_under_attack(Square square, Color player_under_attack) {
     auto queen_attacks = bishop_attacks | rook_attacks;
 
     // bishops
-    while (bishop_attacks) {
-        auto possible_bishop_bb = BitboardUtil::square_to_bitboard(pop_lsb(bishop_attacks));
-        if (possible_bishop_bb & bitboards[attacker][BISHOP]) return true;
-    }
+    if (bishop_attacks & bitboards[attacker][BISHOP]) return true;
 
     // rooks
-    while (rook_attacks) {
-        auto possible_rook_bb = BitboardUtil::square_to_bitboard(pop_lsb(rook_attacks));
-        if (possible_rook_bb & bitboards[attacker][ROOK]) return true;
-    }
+    if (rook_attacks & bitboards[attacker][ROOK]) return true;
 
     // queens
-    while (queen_attacks) {
-        auto possible_queen_bb = BitboardUtil::square_to_bitboard(pop_lsb(queen_attacks));
-        if (possible_queen_bb & bitboards[attacker][QUEEN]) return true;
-    }
+    if (queen_attacks & bitboards[attacker][QUEEN]) return true;
 
-    // king
-    auto king_attacks = KING_ATTACKS[square];
-    while (king_attacks) {
-        auto possible_king_bb = BitboardUtil::square_to_bitboard(pop_lsb(king_attacks));
-        if (possible_king_bb & bitboards[attacker][KING]) return true;
-    }
 
     return false;
 }
