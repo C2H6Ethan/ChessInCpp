@@ -16,40 +16,49 @@ static const std::string square_to_string[64] = {
     "a8","b8","c8","d8","e8","f8","g8","h8"
 };
 
-// Standard recursive perft
+// Recursive perft using pseudo-legal moves, filtering out illegal ones
 uint64_t perft(Board& board, int depth) {
     if (depth == 0) return 1ULL;
 
     Move moves[256];
-    Move *end = board.generate_legal_moves(moves);
+    Move *end = board.generate_pseudo_legal_moves(moves);
     uint64_t nodes = 0;
 
     for (Move *m = moves; m < end; ++m) {
         board.move(*m);
-        nodes += perft(board, depth - 1);
+
+        // If our own king is in check after making the move, it's illegal → skip
+        Color us = (board.get_player_to_move() == WHITE ? BLACK : WHITE);
+        if (!board.is_in_check(us)) {
+            nodes += perft(board, depth - 1);
+        }
+
         board.undo_move(*m);
     }
 
     return nodes;
 }
 
-// Root perft that prints Stockfish-like breakdown
+// Root perft breakdown (Stockfish-style)
 void perft_divide(Board &board, int depth) {
     Move moves[256];
-    Move *end = board.generate_legal_moves(moves);
+    Move *end = board.generate_pseudo_legal_moves(moves);
 
     uint64_t total_nodes = 0;
 
     for (Move *m = moves; m < end; ++m) {
         board.move(*m);
-        uint64_t nodes = perft(board, depth - 1);
+
+        Color us = (board.get_player_to_move() == WHITE ? BLACK : WHITE);
+        if (!board.is_in_check(us)) {
+            uint64_t nodes = perft(board, depth - 1);
+            std::string from = square_to_string[m->from()];
+            std::string to   = square_to_string[m->to()];
+            std::cout << from << to << ": " << nodes << "\n";
+            total_nodes += nodes;
+        }
+
         board.undo_move(*m);
-
-        std::string from = square_to_string[m->from()];
-        std::string to   = square_to_string[m->to()];
-
-        std::cout << from << to << ": " << nodes << "\n";
-        total_nodes += nodes;
     }
 
     std::cout << "Total nodes: " << total_nodes << "\n";

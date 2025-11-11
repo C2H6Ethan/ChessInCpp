@@ -576,29 +576,6 @@ void Board::undo_move(Move m) {
 }
 
 // ============= Move Generation =============
-Move* Board::generate_legal_moves(Move* list) {
-    // Temporary array to hold pseudo moves
-    Move pseudo_moves[256];
-    Move* pseudo_end = generate_pseudo_legal_moves(pseudo_moves);
-
-    Move* legal_list = list;
-
-    for (Move* m = pseudo_moves; m < pseudo_end; ++m) {
-        move(*m);
-
-        // If after making the move, our own king is in check → illegal
-        if (!is_in_check(player_to_move == WHITE ? BLACK : WHITE)) {
-            *legal_list++ = *m;
-        }
-
-        undo_move(*m);
-    }
-
-    return legal_list;
-}
-
-
-
 Move *Board::generate_pseudo_legal_moves(Move *list) {
     // generates all possible moves, does not check for checks
 
@@ -906,6 +883,11 @@ bool Board::is_in_check(Color player) {
 
     return is_square_under_attack(king_square, player);
 }
+
+Color Board::get_player_to_move() {
+    return player_to_move;
+}
+
 
 
 
