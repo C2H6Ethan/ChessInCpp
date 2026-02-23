@@ -1,83 +1,56 @@
 #include <iostream>
-#include <chrono>
 #include <string>
+#include <vector>
 #include "Board.h"
 #include "Move.h"
 
-// Helper to get algebraic square names from enums
-static const std::string square_to_string[64] = {
-    "a1","b1","c1","d1","e1","f1","g1","h1",
-    "a2","b2","c2","d2","e2","f2","g2","h2",
-    "a3","b3","c3","d3","e3","f3","g3","h3",
-    "a4","b4","c4","d4","e4","f4","g4","h4",
-    "a5","b5","c5","d5","e5","f5","g5","h5",
-    "a6","b6","c6","d6","e6","f6","g6","h6",
-    "a7","b7","c7","d7","e7","f7","g7","h7",
-    "a8","b8","c8","d8","e8","f8","g8","h8"
-};
-
-// Recursive perft using pseudo-legal moves, filtering out illegal ones
-uint64_t perft(Board& board, int depth) {
-    if (depth == 0) return 1ULL;
-
-    Move moves[256];
-    Move *end = board.generate_pseudo_legal_moves(moves);
-    uint64_t nodes = 0;
-
-    for (Move *m = moves; m < end; ++m) {
-        board.move(*m);
-
-        // If our own king is in check after making the move, it's illegal → skip
-        Color us = (board.get_player_to_move() == WHITE ? BLACK : WHITE);
-        if (!board.is_in_check(us)) {
-            nodes += perft(board, depth - 1);
-        }
-
-        board.undo_move(*m);
+int main(int argc, char* argv[]) {
+    // Tier 1: system error — wrong number of args
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " <fen> <uci_move>\n";
+        return 1;
     }
 
-    return nodes;
-}
-
-// Root perft breakdown (Stockfish-style)
-void perft_divide(Board &board, int depth) {
-    Move moves[256];
-    Move *end = board.generate_pseudo_legal_moves(moves);
-
-    uint64_t total_nodes = 0;
-
-    for (Move *m = moves; m < end; ++m) {
-        board.move(*m);
-
-        Color us = (board.get_player_to_move() == WHITE ? BLACK : WHITE);
-        if (!board.is_in_check(us)) {
-            uint64_t nodes = perft(board, depth - 1);
-            std::string from = square_to_string[m->from()];
-            std::string to   = square_to_string[m->to()];
-            std::cout << from << to << ": " << nodes << "\n";
-            total_nodes += nodes;
-        }
-
-        board.undo_move(*m);
-    }
-
-    std::cout << "Total nodes: " << total_nodes << "\n";
-}
-
-void start_perft(int depth, Board &board) {
-    std::cout << "Running perft(" << depth << ")...\n";
-
-    auto start = std::chrono::high_resolution_clock::now();
-    perft_divide(board, depth);
-    auto end = std::chrono::high_resolution_clock::now();
-
-    double elapsed = std::chrono::duration<double>(end - start).count();
-    std::cout << "Time: " << elapsed << "s\n";
-}
-
-int main() {
+    // Tier 1: system error — catastrophically malformed FEN
     Board board;
-    board.setup_with_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 0 1");
-    start_perft(5, board);
+    try {
+        board.setup_with_fen(argv[1]);
+    } catch (...) {
+        std::cerr << "Error: failed to parse FEN\n";
+        return 1;
+    }
+
+    // Tier 2: domain logic — always exit 0 from here
+    Move m = board.parse_uci_move(argv[2]);
+
+    if (m == Move()) {
+        std::cout << "{\"status\": \"INVALID\"}" << std::endl;
+        return 0;
+    }
+
+    board.move(m);
+
+    std::vector<Move> legal_moves = board.get_legal_moves();
+    bool in_check = board.is_in_check(board.get_player_to_move());
+
+    std::string game_state;
+    if (legal_moves.empty() && in_check) {
+        game_state = "CHECKMATE";
+    } else if (legal_moves.empty() && !in_check) {
+        game_state = "STALEMATE";
+    } else if (board.get_halfmove_clock() >= 100) {
+        game_state = "DRAW_50_MOVE";
+    } else if (board.is_insufficient_material()) {
+        game_state = "DRAW_INSUFFICIENT";
+    } else {
+        game_state = "ACTIVE";
+    }
+
+    std::cout << "{"
+              << "\"status\": \"VALID\", "
+              << "\"game_state\": \"" << game_state << "\", "
+              << "\"new_fen\": \"" << board.to_fen() << "\""
+              << "}" << std::endl;
+
     return 0;
 }

@@ -306,6 +306,7 @@ Board::Board() {
     castling_rights = {true, true, true, true};
     game_ply = 0;
     full_move_counter = 1;
+    halfmove_clock = 0;
 }
 
 // ============= Setup Methods =============
@@ -377,11 +378,17 @@ void Board::setup_with_fen(std::string fen) {
 
 
     // Parse move counters
-    game_ply = std::stoi(tokens[4]);
+    game_ply = 0;
+    halfmove_clock = std::stoi(tokens[4]);
     full_move_counter = std::stoi(tokens[5]);
 
-    // Parse en passant
-    history[game_ply - 1].epsq = (tokens[3] == "-") ? NO_SQUARE : SquareMap.at(tokens[3]);
+    // Parse en passant (Bug 1 fix: write to history[0] directly)
+    history[0].epsq = (tokens[3] == "-") ? NO_SQUARE : SquareMap.at(tokens[3]);
+
+    // Bug 3 fix: save parsed castling rights into history[0] so undo_move restores correctly
+    history[0].castling_rights = castling_rights;
+    history[0].halfmove_clock = halfmove_clock;
+    history[0].full_move_counter = full_move_counter;
 }
 
 // ============= Move Execution =============
@@ -510,6 +517,22 @@ void Board::move(Move m) {
     }
 
     history[game_ply].castling_rights = castling_rights;
+
+    // Halfmove clock: reset on pawn move or capture, otherwise increment
+    if (piece_type == PAWN || (type & CAPTURE)) {
+        halfmove_clock = 0;
+    } else {
+        halfmove_clock++;
+    }
+
+    // Full-move counter: increment after Black's move
+    if (player_to_move == BLACK) {
+        full_move_counter++;
+    }
+
+    history[game_ply].halfmove_clock = halfmove_clock;
+    history[game_ply].full_move_counter = full_move_counter;
+
     player_to_move = static_cast<Color>(!static_cast<bool>(player_to_move));
 }
 
@@ -573,6 +596,8 @@ void Board::undo_move(Move m) {
 
     game_ply--;
     castling_rights = history[game_ply].castling_rights;
+    halfmove_clock = history[game_ply].halfmove_clock;
+    full_move_counter = history[game_ply].full_move_counter;
 }
 
 // ============= Move Generation =============
@@ -915,13 +940,6 @@ void Board::make_quiet_move(Square from, Square to) {
 
 
 void Board::put_piece(Square s, Piece p) {
-    if (mailbox[s].type != NO_PIECE_TYPE ) {
-        for (int i = 1; i < game_ply; i++) {
-            BitboardUtil::print_bitboard(history[i].entry);
-            if (history[i].captured.type != NO_PIECE_TYPE) std::cout << "capture" << '\n';
-        }
-        int tmp = 5;
-    }
     assert(mailbox[s].type == NO_PIECE_TYPE && "Square not empty");
     Bitboard bb = BitboardUtil::square_to_bitboard(s);
     bitboards[p.color][p.type] |= bb;
@@ -953,6 +971,111 @@ Square Board::pop_lsb(Bitboard &bb) {
     return lsb_square;
 }
 
+
+// ============= New Validator Methods =============
+
+int Board::get_halfmove_clock() const {
+    return halfmove_clock;
+}
+
+Move Board::parse_uci_move(const std::string& uci) {
+    for (const Move& m : get_legal_moves()) {
+        if (m.to_uci() == uci) return m;
+    }
+    return Move();
+}
+
+std::vector<Move> Board::get_legal_moves() {
+    Move moves[256];
+    Move* end = generate_pseudo_legal_moves(moves);
+    std::vector<Move> legal;
+
+    for (Move* m = moves; m < end; ++m) {
+        move(*m);
+        Color us = (player_to_move == WHITE) ? BLACK : WHITE;
+        if (!is_in_check(us)) {
+            legal.push_back(*m);
+        }
+        undo_move(*m);
+    }
+
+    return legal;
+}
+
+bool Board::is_insufficient_material() {
+    int white_count = __builtin_popcountll(occupancy[WHITE]);
+    int black_count = __builtin_popcountll(occupancy[BLACK]);
+
+    // K vs K
+    if (white_count == 1 && black_count == 1) return true;
+
+    // K+N vs K
+    if (white_count == 2 && black_count == 1 && bitboards[WHITE][KNIGHT]) return true;
+    if (white_count == 1 && black_count == 2 && bitboards[BLACK][KNIGHT]) return true;
+
+    // K+B vs K
+    if (white_count == 2 && black_count == 1 && bitboards[WHITE][BISHOP]) return true;
+    if (white_count == 1 && black_count == 2 && bitboards[BLACK][BISHOP]) return true;
+
+    return false;
+}
+
+std::string Board::to_fen() {
+    std::string fen;
+
+    // 1. Piece placement (rank 8 down to rank 1)
+    for (int rank = 7; rank >= 0; rank--) {
+        int empty = 0;
+        for (int file = 0; file < 8; file++) {
+            int sq = rank * 8 + file;
+            Piece p = mailbox[sq];
+            if (p.type == NO_PIECE_TYPE) {
+                empty++;
+            } else {
+                if (empty > 0) {
+                    fen += static_cast<char>('0' + empty);
+                    empty = 0;
+                }
+                fen += (p.color == WHITE) ? whitePiecesString[p.type] : blackPiecesString[p.type];
+            }
+        }
+        if (empty > 0) fen += static_cast<char>('0' + empty);
+        if (rank > 0) fen += '/';
+    }
+
+    // 2. Active color
+    fen += ' ';
+    fen += (player_to_move == WHITE) ? 'w' : 'b';
+
+    // 3. Castling rights
+    fen += ' ';
+    std::string castling;
+    if (castling_rights.white_king_side)  castling += 'K';
+    if (castling_rights.white_queen_side) castling += 'Q';
+    if (castling_rights.black_king_side)  castling += 'k';
+    if (castling_rights.black_queen_side) castling += 'q';
+    fen += castling.empty() ? "-" : castling;
+
+    // 4. En passant square
+    fen += ' ';
+    Square epsq = history[game_ply].epsq;
+    if (epsq == NO_SQUARE) {
+        fen += '-';
+    } else {
+        fen += static_cast<char>('a' + (epsq % 8));
+        fen += static_cast<char>('1' + (epsq / 8));
+    }
+
+    // 5. Halfmove clock
+    fen += ' ';
+    fen += std::to_string(halfmove_clock);
+
+    // 6. Full-move counter
+    fen += ' ';
+    fen += std::to_string(full_move_counter);
+
+    return fen;
+}
 
 // ============= Display Methods =============
 

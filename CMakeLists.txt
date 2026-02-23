@@ -3,7 +3,7 @@ project(ChessInCpp)
 
 set(CMAKE_CXX_STANDARD 26)
 
-add_executable(ChessInCpp main.cpp
+add_executable(validator main.cpp
         Board.cpp
         Board.h
         BitboardUtils.h

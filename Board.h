@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 class Move;
 // ============= Basic Types =============
@@ -63,6 +64,8 @@ struct UndoInfo {
     Piece captured = {NO_PIECE_TYPE, WHITE};
     Square epsq = NO_SQUARE;
     CastlingRights castling_rights = {true, true, true, true};
+    int halfmove_clock = 0;
+    uint16_t full_move_counter = 1;
 
     UndoInfo() = default;
 
@@ -86,6 +89,7 @@ private:
     CastlingRights castling_rights;
     int game_ply;
     uint16_t full_move_counter;
+    int halfmove_clock;
 
     // Move Generation
     Move* generate_pawn_moves(Move *list, Square from_square);
@@ -129,6 +133,15 @@ public:
     Color get_piece_color_on_square(Square s);
     Color get_player_to_move();
     bool is_in_check(Color player);
+    int get_halfmove_clock() const;
+
+    // Move validation
+    Move parse_uci_move(const std::string& uci);
+    std::vector<Move> get_legal_moves();
+    bool is_insufficient_material();
+
+    // FEN output
+    std::string to_fen();
 
     // Display
     void print();
